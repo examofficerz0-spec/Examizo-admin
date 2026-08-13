@@ -15,7 +15,25 @@ html {
 }
 
 /* Smooth Light/Dark Mode Global Theme Color Transitions */
-body, div, header, nav, main, section, article, button, input, select, textarea, span, p, h1, h2, h3, h4, h5, h6 {
+body,
+div,
+header,
+nav,
+main,
+section,
+article,
+button,
+input,
+select,
+textarea,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   transition-property: color, background-color, border-color, box-shadow;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 250ms;
@@ -26,12 +44,15 @@ body, div, header, nav, main, section, article, button, input, select, textarea,
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   @apply bg-slate-300 dark:bg-slate-700 rounded-full;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-400 dark:bg-slate-600;
 }
@@ -42,6 +63,7 @@ body, div, header, nav, main, section, article, button, input, select, textarea,
     opacity: 0;
     transform: translateX(18px) scale(0.995);
   }
+
   100% {
     opacity: 1;
     transform: translateX(0) scale(1);
@@ -76,14 +98,14 @@ body, div, header, nav, main, section, article, button, input, select, textarea,
 .dark .card-shadow,
 .dark .rounded-2xl,
 .dark .rounded-3xl {
-  box-shadow: 
+  box-shadow:
     0 12px 40px -10px rgba(147, 51, 234, 0.22),
     0 4px 20px -4px rgba(0, 0, 0, 0.95),
     0 0 0 1px rgba(168, 85, 247, 0.15) !important;
 }
 
 .dark header {
-  box-shadow: 
+  box-shadow:
     0 8px 32px -8px rgba(147, 51, 234, 0.25),
     0 4px 16px rgba(0, 0, 0, 0.98),
     0 1px 0 0 rgba(168, 85, 247, 0.2) !important;
@@ -133,7 +155,7 @@ body, div, header, nav, main, section, article, button, input, select, textarea,
 }
 
 /* Dark Mode Card Background Override (#0D0D12 - Pure Obsidian Black Card) */
-.dark .bg-slate-900,
+/* .dark .bg-slate-900,
 .dark .bg-slate-950,
 .dark .bg-[#0B132B],
 .dark .bg-[#0F172A],
@@ -150,7 +172,7 @@ body, div, header, nav, main, section, article, button, input, select, textarea,
 .dark .bg-slate-800\/50,
 .dark .bg-slate-800\/40 {
   background-color: #0D0D12 !important;
-}
+} */
 
 /* Dark Mode Sub-panels / Inner Elements (#181622 & #242033) */
 .dark .bg-slate-800\/90,
