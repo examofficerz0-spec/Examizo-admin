@@ -41,7 +41,7 @@ export default function QuestionManagementPage() {
   const [loading, setLoading] = useState(!initialCache);
 
   // Selected Scope
-  const [selectedCourseId, setSelectedCourseId] = useState(initialCache?.courses?.[0]?._id || '');
+  const [selectedCourseId, setSelectedCourseId] = useState(initialCache?.courses?.[0]?._id || initialCache?.courses?.[0]?.id || '');
   const [currentLevel, setCurrentLevel] = useState<'subjects' | 'topics' | 'questions'>('subjects');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedTopic, setSelectedTopic] = useState<string>('');
@@ -125,7 +125,7 @@ export default function QuestionManagementPage() {
 
       let loadedCourses = cData.courses || [];
       if (adminInfo && adminInfo.allowed_courses && !adminInfo.allowed_courses.includes('all') && adminInfo.role !== 'Super Admin') {
-        loadedCourses = loadedCourses.filter((c: any) => adminInfo.allowed_courses.includes(c._id));
+        loadedCourses = loadedCourses.filter((c: any) => adminInfo.allowed_courses.includes(c._id || c.id));
       }
 
       const newCache = {
@@ -137,8 +137,9 @@ export default function QuestionManagementPage() {
       }
 
       setCourses(loadedCourses);
-      if (loadedCourses.length > 0 && !selectedCourseId) {
-        setSelectedCourseId(loadedCourses[0]._id);
+      if (loadedCourses.length > 0) {
+        const firstId = String(loadedCourses[0]._id || loadedCourses[0].id || '');
+        setSelectedCourseId((prev) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstId));
       }
 
       setQuestions(qData.questions || []);
@@ -154,10 +155,10 @@ export default function QuestionManagementPage() {
   }, []);
 
   // Compute Subjects & Topics dynamically from questions & custom lists
-  const activeCourse = courses.find((c) => c._id === selectedCourseId);
+  const activeCourse = courses.find((c) => String(c._id || c.id) === String(selectedCourseId));
 
   const courseQuestions = questions.filter((q) => {
-    const cId = typeof q.course_id === 'object' ? q.course_id?._id : q.course_id;
+    const cId = typeof q.course_id === 'object' ? (q.course_id?._id || q.course_id?.id) : q.course_id;
     return String(cId) === String(selectedCourseId);
   });
 
@@ -1148,7 +1149,7 @@ Explanation: Power is the rate at which work is done or energy is transferred.
               <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Target Course:</span>
               <CustomSelect
                 options={courses.map((c) => ({
-                  value: c._id,
+                  value: c._id || c.id,
                   label: c.name,
                   badge: c.category || 'Exam',
                 }))}
