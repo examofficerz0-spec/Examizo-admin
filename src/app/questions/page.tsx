@@ -135,7 +135,7 @@ export default function QuestionManagementPage() {
       setCourses(loadedCourses);
       if (loadedCourses.length > 0) {
         const firstId = String(loadedCourses[0]._id || loadedCourses[0].id || '');
-        setSelectedCourseId((prev) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstId));
+        setSelectedCourseId((prev: any) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstId));
       }
 
       setQuestions(qData.questions || []);

@@ -117,7 +117,7 @@ export async function POST(req: Request) {
       question_text,
       options: cleanOptions,
       correct_option: qType === 'MCQ' ? Number(correct_option || 0) : 0,
-      sample_answer: sampleAnswer || '',
+      sample_answer: sample_answer || '',
       marks: calculatedMarks,
       explanation: explanation || '',
       detailed_explanation: detailed_explanation || '',
