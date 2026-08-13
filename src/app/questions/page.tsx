@@ -73,7 +73,7 @@ export default function QuestionManagementPage() {
 
   // Bulk Question Modal
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [bulkMode, setBulkMode] = useState<'document' | 'excel' | 'text' | 'form'>('document');
+  const [bulkMode, setBulkMode] = useState<'excel' | 'text' | 'form'>('excel');
   const [excelFileName, setExcelFileName] = useState('');
   const [excelParsing, setExcelParsing] = useState(false);
   const [parsedExcelQuestions, setParsedExcelQuestions] = useState<any[]>([]);
@@ -1694,16 +1694,6 @@ Explanation: Power is the rate at which work is done or energy is transferred.
             <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 mb-4 gap-1">
               <button
                 type="button"
-                onClick={() => setBulkMode('document')}
-                className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-colors ${bulkMode === 'document'
-                  ? 'border-[#0B192C] text-[#0B192C] dark:border-blue-400 dark:text-blue-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-              >
-                <FileText className="w-4 h-4 text-rose-600" /> PDF & Word Upload (.pdf, .docx)
-              </button>
-              <button
-                type="button"
                 onClick={() => setBulkMode('excel')}
                 className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-colors ${bulkMode === 'excel'
                   ? 'border-[#0B192C] text-[#0B192C] dark:border-blue-400 dark:text-blue-400'
@@ -1737,128 +1727,6 @@ Explanation: Power is the rate at which work is done or energy is transferred.
             {bulkError && <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 text-xs rounded-lg">{bulkError}</div>}
 
             <form onSubmit={handleBulkSubmit} className="flex-1 flex flex-col min-h-0 space-y-4 text-xs">
-              {/* TAB 1: PDF & WORD DOCUMENT FILE UPLOAD */}
-              {bulkMode === 'document' && (
-                <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
-                  <div className="flex justify-between items-center p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg">
-                    <div>
-                      <h4 className="font-bold text-rose-900 dark:text-rose-300 text-xs">PDF & Word Document Parser</h4>
-                      <p className="text-[11px] text-rose-700 dark:text-rose-400">Upload .pdf, .docx, or .doc question papers. Questions and assigned answers will be extracted automatically.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={downloadSampleDocTemplate}
-                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
-                    >
-                      <Download className="w-4 h-4" /> Sample Format Guide
-                    </button>
-                  </div>
-
-                  {docError && (
-                    <div className="p-3 bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>{docError}</span>
-                    </div>
-                  )}
-
-                  {!parsedDocQuestions.length ? (
-                    <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-8 text-center flex flex-col items-center justify-center space-y-3 bg-slate-50/50 dark:bg-slate-800/20 flex-1">
-                      {docParsing ? (
-                        <div className="flex flex-col items-center space-y-2 py-6">
-                          <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="font-bold text-slate-700 dark:text-slate-300">Extracting questions & answers from document...</span>
-                        </div>
-                      ) : (
-                        <>
-                          <FileText className="w-12 h-12 text-rose-500" />
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-white block text-sm mb-1">
-                              {docFileName ? `Selected: ${docFileName}` : 'Upload PDF or Word Document'}
-                            </span>
-                            <span className="text-[11px] text-slate-500 block">
-                              Supports PDF (.pdf), Word (.docx, .doc), and Text (.txt) formats with questions, options & assigned answers.
-                            </span>
-                          </div>
-
-                          <label className="cursor-pointer px-4 py-2.5 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg shadow-xs text-xs flex items-center gap-2 transition-colors">
-                            <Upload className="w-4 h-4" /> Select Question File
-                            <input
-                              type="file"
-                              accept=".pdf,.docx,.doc,.txt"
-                              onChange={handleDocFileUpload}
-                              className="hidden"
-                            />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                      <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-800 dark:text-slate-200">
-                            Parsed {parsedDocQuestions.length} Questions from &quot;{docFileName}&quot;
-                          </span>
-                        </div>
-                        <label className="cursor-pointer px-3 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold rounded text-xs">
-                          Change File
-                          <input
-                            type="file"
-                            accept=".pdf,.docx,.doc,.txt"
-                            onChange={handleDocFileUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto space-y-3 max-h-[40vh] pr-1">
-                        {parsedDocQuestions.map((q: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2"
-                          >
-                            <div className="flex justify-between items-start">
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
-                                Q{idx + 1}. {q.question_text}
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold rounded shrink-0 ml-2">
-                                {q.topic_tag}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                              {q.options.map((opt: string, optIdx: number) => {
-                                const isCorrect = q.correct_option === optIdx;
-                                return (
-                                  <div
-                                    key={optIdx}
-                                    className={`p-1.5 rounded border ${isCorrect
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 font-bold'
-                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                                      }`}
-                                  >
-                                    <span className="font-mono mr-1">
-                                      {String.fromCharCode(65 + optIdx)}:
-                                    </span>
-                                    {opt}
-                                    {isCorrect && <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓ (Answer)</span>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {q.explanation && (
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                                Explanation: {q.explanation}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* TAB 2: PLAIN TEXT Q&A PASTE */}
               {bulkMode === 'text' && (

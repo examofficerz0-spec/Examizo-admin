@@ -3,10 +3,10 @@ import { dbConnect } from '@/lib/db';
 import { Question, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
+import { queryD1, executeD1 } from '@/lib/d1';
 
 export async function POST(req: Request) {
   try {
-    const { isMemoryMode } = await dbConnect();
     const admin = getAuthenticatedAdmin();
 
     const body = await req.json();
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       let opts = Array.isArray(q.options) ? q.options.map((o: any) => String(o || '').trim()).filter(Boolean) : [];
 
       if (!qText || isMalformedQuestion(qText, opts)) {
-        continue; // Skip malformed header lines cleanly
+        continue;
       }
 
       while (opts.length < 4) {
@@ -91,6 +91,7 @@ export async function POST(req: Request) {
 
       preparedQuestions.push({
         _id: generateId(),
+        id: generateId(),
         course_id: courseId,
         subject: subj,
         topic_tag: topicTag,
@@ -108,6 +109,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid questions found in bulk upload batch.' }, { status: 400 });
     }
 
+    // 1. Try Cloudflare D1 Insertion
+    try {
+      let d1InsertedCount = 0;
+      for (const q of preparedQuestions) {
+        const d1Success = await executeD1(
+          'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+          [
+            q.id,
+            q.course_id,
+            q.topic_tag,
+            'MCQ',
+            q.question_text,
+            JSON.stringify(q.options),
+            q.correct_option,
+            '',
+            1,
+            q.explanation || '',
+            q.detailed_explanation || '',
+          ]
+        );
+        if (d1Success) d1InsertedCount++;
+      }
+
+      if (d1InsertedCount > 0) {
+        await executeD1(
+          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'BULK_ADD_QUESTIONS', `batch_${d1InsertedCount}`, `Bulk uploaded ${d1InsertedCount} questions via Excel into question bank`]
+        );
+        return NextResponse.json({ success: true, count: d1InsertedCount, questions: preparedQuestions });
+      }
+    } catch (e) {
+      console.warn('[Bulk Questions D1 Error]:', e);
+    }
+
+    // 2. Memory Mode Fallback
+    const { isMemoryMode } = await dbConnect();
     if (isMemoryMode) {
       const db = readSharedDb();
       if (!db.questions) db.questions = [];
@@ -128,7 +165,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, count: preparedQuestions.length, questions: preparedQuestions });
     }
 
-    // Mongoose mode
+    // 3. Mongoose mode Fallback
     const inserted = await Question.insertMany(
       preparedQuestions.map((q) => ({
         course_id: q.course_id,
