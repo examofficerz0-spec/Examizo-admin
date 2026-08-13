@@ -1,4 +1,17 @@
 export async function queryD1<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  // 1. Try Cloudflare Pages / Workers native D1 binding
+  const nativeDb = (globalThis as any).DB || (process as any).env?.DB;
+  if (nativeDb && typeof nativeDb.prepare === 'function') {
+    try {
+      const stmt = nativeDb.prepare(sql).bind(...params);
+      const res = await stmt.all();
+      return (res.results || res) as T[];
+    } catch (err) {
+      console.error('[D1 Native Query Error]:', err);
+    }
+  }
+
+  // 2. Fallback to Cloudflare REST API
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -23,13 +36,26 @@ export async function queryD1<T = any>(sql: string, params: any[] = []): Promise
       return data.result[0].results as T[];
     }
   } catch (err) {
-    console.error('[D1 Error]:', err);
+    console.error('[D1 API Query Error]:', err);
   }
 
   return [];
 }
 
 export async function executeD1(sql: string, params: any[] = []): Promise<boolean> {
+  // 1. Try Cloudflare Pages / Workers native D1 binding
+  const nativeDb = (globalThis as any).DB || (process as any).env?.DB;
+  if (nativeDb && typeof nativeDb.prepare === 'function') {
+    try {
+      const stmt = nativeDb.prepare(sql).bind(...params);
+      const res = await stmt.run();
+      return !!res.success;
+    } catch (err) {
+      console.error('[D1 Native Execute Error]:', err);
+    }
+  }
+
+  // 2. Fallback to Cloudflare REST API
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -52,7 +78,7 @@ export async function executeD1(sql: string, params: any[] = []): Promise<boolea
     const data = await res.json();
     return !!data.success;
   } catch (err) {
-    console.error('[D1 Execute Error]:', err);
+    console.error('[D1 API Execute Error]:', err);
     return false;
   }
 }

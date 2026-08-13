@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { Question, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
-import { queryD1, executeD1 } from '@/lib/d1';
+import { executeD1 } from '@/lib/d1';
+
+const isMalformedQuestion = (qText: any, options?: any[]): boolean => {
+  if (!qText || typeof qText !== 'string') return true;
+  const cleaned = qText.trim();
+  if (cleaned.length < 1) return true;
+  if (/^(?:subject|topic|chapter)\s*[\:\-]/i.test(cleaned)) return true;
+  return false;
+};
 
 export async function POST(req: Request) {
   try {
@@ -27,27 +33,6 @@ export async function POST(req: Request) {
     if (!Array.isArray(questionsRaw) || questionsRaw.length === 0) {
       return NextResponse.json({ error: 'Please provide a non-empty array of questions' }, { status: 400 });
     }
-
-    const isMalformedQuestion = (qText: any, options?: any[]): boolean => {
-      if (!qText || typeof qText !== 'string') return true;
-      const cleaned = qText.trim().toLowerCase();
-      if (cleaned.length <= 2) return true;
-      const headerWords = [
-        'chemistry', 'physics', 'mathematics', 'math', 'biology', 'botany', 'zoology',
-        'inorganic chemistry', 'organic chemistry', 'physical chemistry', 'thermodynamics',
-        'kinematics', 'mechanics', 'optics', 'waves', 'magnetism', 'electrostatics',
-        'algebra', 'calculus', 'vectors', 'trigonometry', 'geometry', 'general', 'science'
-      ];
-      if (headerWords.includes(cleaned)) return true;
-      if (/^(?:subject|topic|chapter)\s*[\:\-]/i.test(cleaned)) return true;
-      if (options && Array.isArray(options) && options.length > 0) {
-        const opt0 = String(options[0] || '').trim().toLowerCase();
-        if (opt0 === cleaned && options.slice(1).every((o) => /^option\s+[b-d]$/i.test(String(o).trim()))) {
-          return true;
-        }
-      }
-      return false;
-    };
 
     const preparedQuestions: any[] = [];
     for (let i = 0; i < questionsRaw.length; i++) {
@@ -87,12 +72,16 @@ export async function POST(req: Request) {
       if (topicTag && !topicTag.includes('-') && subj) {
         topicTag = `${subj} - ${topicTag}`;
       }
-      const courseId = q.course_id || targetCourseId || 'course_jee_2027';
+
+      const rawCourse = q.course_id || targetCourseId;
+      const cleanCourseId = typeof rawCourse === 'object' && rawCourse
+        ? String(rawCourse._id || rawCourse.id || '')
+        : String(rawCourse || 'course_jee_2027');
 
       preparedQuestions.push({
         _id: generateId(),
         id: generateId(),
-        course_id: courseId,
+        course_id: cleanCourseId,
         subject: subj,
         topic_tag: topicTag,
         question_text: qText,
@@ -109,7 +98,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid questions found in bulk upload batch.' }, { status: 400 });
     }
 
-    // 1. Try Cloudflare D1 Insertion
+    // 1. Try Cloudflare D1 (Primary Database)
     try {
       let d1InsertedCount = 0;
       for (const q of preparedQuestions) {
@@ -133,61 +122,37 @@ export async function POST(req: Request) {
       }
 
       if (d1InsertedCount > 0) {
-        await executeD1(
-          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'BULK_ADD_QUESTIONS', `batch_${d1InsertedCount}`, `Bulk uploaded ${d1InsertedCount} questions via Excel into question bank`]
-        );
+        try {
+          await executeD1(
+            'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'BULK_ADD_QUESTIONS', `batch_${d1InsertedCount}`, `Bulk uploaded ${d1InsertedCount} questions into Cloudflare D1 question bank`]
+          );
+        } catch (auditErr) {}
+
         return NextResponse.json({ success: true, count: d1InsertedCount, questions: preparedQuestions });
       }
     } catch (e) {
-      console.warn('[Bulk Questions D1 Error]:', e);
+      console.warn('[Bulk Questions D1 Warning]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      if (!db.questions) db.questions = [];
-      preparedQuestions.forEach((q) => db.questions.unshift(q));
+    // 2. Resilient JSON Store Fallback (Local environment)
+    const db = readSharedDb();
+    if (!db.questions) db.questions = [];
+    preparedQuestions.forEach((q) => db.questions.unshift(q));
 
-      if (!db.auditLogs) db.auditLogs = [];
-      db.auditLogs.unshift({
-        _id: generateId(),
-        admin_id: admin?.adminId || 'admin_master_1',
-        admin_name: admin?.name || 'Admin',
-        action_type: 'BULK_ADD_QUESTIONS',
-        affected_entity_id: `batch_${preparedQuestions.length}`,
-        details: `Bulk uploaded ${preparedQuestions.length} questions into question bank`,
-        timestamp: new Date().toISOString(),
-      });
-
-      writeSharedDb(db);
-      return NextResponse.json({ success: true, count: preparedQuestions.length, questions: preparedQuestions });
-    }
-
-    // 3. Mongoose mode Fallback
-    const inserted = await Question.insertMany(
-      preparedQuestions.map((q) => ({
-        course_id: q.course_id,
-        topic_tag: q.topic_tag,
-        question_text: q.question_text,
-        options: q.options,
-        correct_option: q.correct_option,
-        explanation: q.explanation,
-        detailed_explanation: q.detailed_explanation,
-        is_active: true,
-      }))
-    );
-
-    await AuditLog.create({
-      admin_id: admin?.adminId,
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift({
+      _id: generateId(),
+      admin_id: admin?.adminId || 'admin_master_1',
       admin_name: admin?.name || 'Admin',
       action_type: 'BULK_ADD_QUESTIONS',
-      affected_entity_id: `batch_${inserted.length}`,
-      details: `Bulk uploaded ${inserted.length} questions into question bank`,
+      affected_entity_id: `batch_${preparedQuestions.length}`,
+      details: `Bulk uploaded ${preparedQuestions.length} questions into question bank`,
+      timestamp: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, count: inserted.length, questions: inserted });
+    writeSharedDb(db);
+    return NextResponse.json({ success: true, count: preparedQuestions.length, questions: preparedQuestions });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

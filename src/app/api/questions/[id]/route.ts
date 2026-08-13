@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { Question, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { executeD1 } from '@/lib/d1';
@@ -18,7 +16,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       cleanOptions = JSON.stringify(options);
     }
 
-    // 1. Try Cloudflare D1
+    // 1. Try Cloudflare D1 (Primary Database)
     try {
       const d1Success = await executeD1(
         'UPDATE questions SET question_text = COALESCE(?, question_text), topic_tag = COALESCE(?, topic_tag), question_type = COALESCE(?, question_type), options_json = COALESCE(?, options_json), correct_option = COALESCE(?, correct_option), sample_answer = COALESCE(?, sample_answer), marks = COALESCE(?, marks), explanation = COALESCE(?, explanation), detailed_explanation = COALESCE(?, detailed_explanation) WHERE id = ?',
@@ -26,51 +24,38 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       );
 
       if (d1Success) {
-        await executeD1(
-          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'EDIT_QUESTION', qId, `Updated question text/options for ID ${qId}`]
-        );
+        try {
+          await executeD1(
+            'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'EDIT_QUESTION', qId, `Updated question text/options for ID ${qId}`]
+          );
+        } catch (auditErr) {}
+
         return NextResponse.json({ success: true });
       }
     } catch (e) {
-      console.warn('[Admin Question PUT D1 Error]:', e);
+      console.warn('[Admin Question PUT D1 Warning]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
-      if (q) {
-        Object.assign(q, body);
-      }
-
-      if (!db.auditLogs) db.auditLogs = [];
-      db.auditLogs.unshift({
-        _id: generateId(),
-        admin_id: admin?.adminId || 'admin_master_1',
-        admin_name: admin?.name || 'Admin',
-        action_type: 'EDIT_QUESTION',
-        affected_entity_id: qId,
-        details: `Updated question ID ${qId}`,
-        timestamp: new Date().toISOString(),
-      });
-      writeSharedDb(db);
-      return NextResponse.json({ success: true, question: q });
+    // 2. Resilient JSON Store Fallback (Local environment)
+    const db = readSharedDb();
+    const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
+    if (q) {
+      Object.assign(q, body);
     }
 
-    // 3. Mongoose Fallback
-    const updated = await Question.findByIdAndUpdate(qId, body, { new: true });
-
-    await AuditLog.create({
-      admin_id: admin?.adminId,
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift({
+      _id: generateId(),
+      admin_id: admin?.adminId || 'admin_master_1',
       admin_name: admin?.name || 'Admin',
       action_type: 'EDIT_QUESTION',
       affected_entity_id: qId,
-      details: `Updated question text / options for ID ${qId}`,
+      details: `Updated question ID ${qId}`,
+      timestamp: new Date().toISOString(),
     });
-
-    return NextResponse.json({ success: true, question: updated });
+    writeSharedDb(db);
+    return NextResponse.json({ success: true, question: q });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -81,54 +66,41 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const admin = getAuthenticatedAdmin();
     const qId = params.id;
 
-    // 1. Try Cloudflare D1
+    // 1. Try Cloudflare D1 (Primary Database)
     try {
       const d1Success = await executeD1('UPDATE questions SET is_active = 0 WHERE id = ?', [qId]);
       if (d1Success) {
-        await executeD1(
-          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'DELETE_QUESTION', qId, `Deactivated question ID ${qId}`]
-        );
+        try {
+          await executeD1(
+            'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'DELETE_QUESTION', qId, `Deactivated question ID ${qId}`]
+          );
+        } catch (auditErr) {}
+
         return NextResponse.json({ success: true });
       }
     } catch (e) {
-      console.warn('[Admin Question DELETE D1 Error]:', e);
+      console.warn('[Admin Question DELETE D1 Warning]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
-      if (q) {
-        q.is_active = false;
-      }
-
-      if (!db.auditLogs) db.auditLogs = [];
-      db.auditLogs.unshift({
-        _id: generateId(),
-        admin_id: admin?.adminId || 'admin_master_1',
-        admin_name: admin?.name || 'Admin',
-        action_type: 'DELETE_QUESTION',
-        affected_entity_id: qId,
-        details: `Deactivated question ID ${qId} (soft-delete per RULE-07)`,
-        timestamp: new Date().toISOString(),
-      });
-      writeSharedDb(db);
-      return NextResponse.json({ success: true });
+    // 2. Resilient JSON Store Fallback (Local environment)
+    const db = readSharedDb();
+    const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
+    if (q) {
+      q.is_active = false;
     }
 
-    // 3. Mongoose Fallback
-    await Question.findByIdAndUpdate(qId, { is_active: false });
-
-    await AuditLog.create({
-      admin_id: admin?.adminId,
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift({
+      _id: generateId(),
+      admin_id: admin?.adminId || 'admin_master_1',
       admin_name: admin?.name || 'Admin',
       action_type: 'DELETE_QUESTION',
       affected_entity_id: qId,
-      details: `Deactivated question ID ${qId} (soft-delete per RULE-07)`,
+      details: `Deactivated question ID ${qId}`,
+      timestamp: new Date().toISOString(),
     });
-
+    writeSharedDb(db);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -79,10 +79,6 @@ export default function QuestionManagementPage() {
   const [parsedExcelQuestions, setParsedExcelQuestions] = useState<any[]>([]);
   const [excelError, setExcelError] = useState('');
   const [bulkText, setBulkText] = useState('');
-  const [docFileName, setDocFileName] = useState('');
-  const [docParsing, setDocParsing] = useState(false);
-  const [parsedDocQuestions, setParsedDocQuestions] = useState<any[]>([]);
-  const [docError, setDocError] = useState('');
   const [bulkFormQuestions, setBulkFormQuestions] = useState<any[]>([
     { topic_tag: '', question_text: '', options: ['', '', '', ''], correct_option: 0, explanation: '' },
   ]);
@@ -412,69 +408,7 @@ export default function QuestionManagementPage() {
     }
   };
 
-  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDocFileName(file.name);
-    setDocParsing(true);
-    setDocError('');
-    setBulkError('');
 
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const defaultTag = selectedSubject && selectedTopic ? `${selectedSubject} - ${selectedTopic}` : 'General';
-      formData.append('defaultTopic', defaultTag);
-
-      const res = await fetch('/api/questions/parse-document', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setDocError(data.error || 'Failed to parse document');
-        setParsedDocQuestions([]);
-      } else {
-        setParsedDocQuestions(data.questions || []);
-      }
-    } catch (err: any) {
-      setDocError('Error uploading and parsing document');
-      setParsedDocQuestions([]);
-    } finally {
-      setDocParsing(false);
-    }
-  };
-
-  const downloadSampleDocTemplate = () => {
-    const sampleContent = `Topic: ${selectedSubject || 'Physics'} - ${selectedTopic || 'Kinematics'}
-
-Q1. What is the acceleration due to gravity near Earth's surface?
-A) 9.8 m/s^2
-B) 8.9 m/s^2
-C) 10.5 m/s^2
-D) 9.8 km/s^2
-Answer: A
-Explanation: Standard acceleration due to gravity at sea level is approximately 9.8 m/s^2.
-
-Q2. Which physical quantity is defined as the rate of doing work?
-A) Force
-B) Energy
-C) Power
-D) Momentum
-Answer: C
-Explanation: Power is the rate at which work is done or energy is transferred.
-`;
-
-    const blob = new Blob([sampleContent], { type: 'text/plain;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'sample_questions_document.txt');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Excel / Spreadsheet file parsing with Fail-Safe 2D Row Engine
   const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -848,19 +782,7 @@ Explanation: Power is the rate at which work is done or energy is transferred.
         return 'General Module';
       };
 
-      if (bulkMode === 'document') {
-        if (!parsedDocQuestions.length) {
-          setBulkError('Please upload a valid PDF or Word document containing questions.');
-          setSubmitting(false);
-          return;
-        }
-        questionsToSubmit = parsedDocQuestions.map((q) => ({
-          ...q,
-          course_id: selectedCourseId,
-          subject: resolveQSubject(q),
-          topic_tag: resolveQTopicTag(q),
-        }));
-      } else if (bulkMode === 'text') {
+      if (bulkMode === 'text') {
         if (!bulkText.trim()) {
           setBulkError('Please paste questions in Q&A plain text format.');
           setSubmitting(false);
@@ -908,9 +830,6 @@ Explanation: Power is the rate at which work is done or energy is transferred.
         setParsedExcelQuestions([]);
         setExcelError('');
         setBulkText('');
-        setParsedDocQuestions([]);
-        setDocFileName('');
-        setDocError('');
 
         if (typeof window !== 'undefined') {
           (window as any).__ADMIN_QUESTIONS_CACHE__ = null;
