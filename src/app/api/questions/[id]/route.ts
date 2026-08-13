@@ -3,16 +3,44 @@ import { dbConnect } from '@/lib/db';
 import { Question, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
+import { executeD1 } from '@/lib/d1';
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
-    const { isMemoryMode } = await dbConnect();
     const admin = getAuthenticatedAdmin();
     const body = await req.json();
+    const qId = params.id;
 
+    const { question_text, topic_tag, question_type, options, correct_option, sample_answer, marks, explanation, detailed_explanation } = body;
+
+    let cleanOptions = options;
+    if (Array.isArray(options)) {
+      cleanOptions = JSON.stringify(options);
+    }
+
+    // 1. Try Cloudflare D1
+    try {
+      const d1Success = await executeD1(
+        'UPDATE questions SET question_text = COALESCE(?, question_text), topic_tag = COALESCE(?, topic_tag), question_type = COALESCE(?, question_type), options_json = COALESCE(?, options_json), correct_option = COALESCE(?, correct_option), sample_answer = COALESCE(?, sample_answer), marks = COALESCE(?, marks), explanation = COALESCE(?, explanation), detailed_explanation = COALESCE(?, detailed_explanation) WHERE id = ?',
+        [question_text, topic_tag, question_type, cleanOptions, correct_option, sample_answer, marks, explanation, detailed_explanation, qId]
+      );
+
+      if (d1Success) {
+        await executeD1(
+          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'EDIT_QUESTION', qId, `Updated question text/options for ID ${qId}`]
+        );
+        return NextResponse.json({ success: true });
+      }
+    } catch (e) {
+      console.warn('[Admin Question PUT D1 Error]:', e);
+    }
+
+    // 2. Memory Mode Fallback
+    const { isMemoryMode } = await dbConnect();
     if (isMemoryMode) {
       const db = readSharedDb();
-      const q = (db.questions || []).find((item) => item._id === params.id);
+      const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
       if (q) {
         Object.assign(q, body);
       }
@@ -23,22 +51,23 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         admin_id: admin?.adminId || 'admin_master_1',
         admin_name: admin?.name || 'Admin',
         action_type: 'EDIT_QUESTION',
-        affected_entity_id: params.id,
-        details: `Updated question ID ${params.id}`,
+        affected_entity_id: qId,
+        details: `Updated question ID ${qId}`,
         timestamp: new Date().toISOString(),
       });
       writeSharedDb(db);
       return NextResponse.json({ success: true, question: q });
     }
 
-    const updated = await Question.findByIdAndUpdate(params.id, body, { new: true });
+    // 3. Mongoose Fallback
+    const updated = await Question.findByIdAndUpdate(qId, body, { new: true });
 
     await AuditLog.create({
       admin_id: admin?.adminId,
       admin_name: admin?.name || 'Admin',
       action_type: 'EDIT_QUESTION',
-      affected_entity_id: params.id,
-      details: `Updated question text / options for ID ${params.id}`,
+      affected_entity_id: qId,
+      details: `Updated question text / options for ID ${qId}`,
     });
 
     return NextResponse.json({ success: true, question: updated });
@@ -49,12 +78,28 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
-    const { isMemoryMode } = await dbConnect();
     const admin = getAuthenticatedAdmin();
+    const qId = params.id;
 
+    // 1. Try Cloudflare D1
+    try {
+      const d1Success = await executeD1('UPDATE questions SET is_active = 0 WHERE id = ?', [qId]);
+      if (d1Success) {
+        await executeD1(
+          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'DELETE_QUESTION', qId, `Deactivated question ID ${qId}`]
+        );
+        return NextResponse.json({ success: true });
+      }
+    } catch (e) {
+      console.warn('[Admin Question DELETE D1 Error]:', e);
+    }
+
+    // 2. Memory Mode Fallback
+    const { isMemoryMode } = await dbConnect();
     if (isMemoryMode) {
       const db = readSharedDb();
-      const q = (db.questions || []).find((item) => item._id === params.id);
+      const q = (db.questions || []).find((item) => String(item._id) === String(qId) || String(item.id) === String(qId));
       if (q) {
         q.is_active = false;
       }
@@ -65,22 +110,23 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         admin_id: admin?.adminId || 'admin_master_1',
         admin_name: admin?.name || 'Admin',
         action_type: 'DELETE_QUESTION',
-        affected_entity_id: params.id,
-        details: `Deactivated question ID ${params.id} (soft-delete per RULE-07)`,
+        affected_entity_id: qId,
+        details: `Deactivated question ID ${qId} (soft-delete per RULE-07)`,
         timestamp: new Date().toISOString(),
       });
       writeSharedDb(db);
       return NextResponse.json({ success: true });
     }
 
-    await Question.findByIdAndUpdate(params.id, { is_active: false });
+    // 3. Mongoose Fallback
+    await Question.findByIdAndUpdate(qId, { is_active: false });
 
     await AuditLog.create({
       admin_id: admin?.adminId,
       admin_name: admin?.name || 'Admin',
       action_type: 'DELETE_QUESTION',
-      affected_entity_id: params.id,
-      details: `Deactivated question ID ${params.id} (soft-delete per RULE-07)`,
+      affected_entity_id: qId,
+      details: `Deactivated question ID ${qId} (soft-delete per RULE-07)`,
     });
 
     return NextResponse.json({ success: true });

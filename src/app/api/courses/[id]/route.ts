@@ -3,16 +3,32 @@ import { dbConnect } from '@/lib/db';
 import { Course, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
+import { queryD1, executeD1 } from '@/lib/d1';
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
-    const { isMemoryMode } = await dbConnect();
     const currentAdmin = getAuthenticatedAdmin();
     const courseId = params.id;
 
+    // 1. Try Cloudflare D1
+    try {
+      const d1Success = await executeD1('DELETE FROM courses WHERE id = ?', [courseId]);
+      if (d1Success) {
+        await executeD1(
+          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [generateId(), currentAdmin?.adminId || 'admin_master_1', currentAdmin?.name || 'Admin', 'REMOVE_COURSE', courseId, `Removed course ID ${courseId}`]
+        );
+        return NextResponse.json({ success: true });
+      }
+    } catch (e) {
+      console.warn('[Admin Course DELETE D1 Error]:', e);
+    }
+
+    // 2. Memory Mode Fallback
+    const { isMemoryMode } = await dbConnect();
     if (isMemoryMode) {
       const db = readSharedDb();
-      const courseIdx = (db.courses || []).findIndex((c) => c._id === courseId);
+      const courseIdx = (db.courses || []).findIndex((c) => String(c._id) === String(courseId) || String(c.id) === String(courseId));
       if (courseIdx === -1) {
         return NextResponse.json({ error: 'Course not found' }, { status: 404 });
       }
@@ -27,7 +43,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         admin_name: currentAdmin?.name || 'Admin',
         action_type: 'REMOVE_COURSE',
         affected_entity_id: courseId,
-        details: `Removed course "${removedCourse.name}" (${removedCourse._id})`,
+        details: `Removed course "${removedCourse.name}" (${courseId})`,
         timestamp: new Date().toISOString(),
       });
 
@@ -35,7 +51,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
       return NextResponse.json({ success: true });
     }
 
-    // Mongoose mode
+    // 3. Mongoose Fallback
     const course = await Course.findById(courseId);
     if (!course) {
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
@@ -59,7 +75,6 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
-    const { isMemoryMode } = await dbConnect();
     const currentAdmin = getAuthenticatedAdmin();
     const courseId = params.id;
     const body = await req.json();
@@ -69,22 +84,74 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Course name is required' }, { status: 400 });
     }
 
+    const catStr = String(category || '').toLowerCase().trim();
+    const isSchool = catStr.includes('school') || catStr.includes('class') || catStr.includes('3-12') || catStr.includes('6-12') || catStr.includes('board');
+    const courseCategory = isSchool ? 'School Exams' : 'Competitive Exams';
+    const courseBoard = isSchool ? String(board || 'CBSE').trim() : (board ? String(board).trim() : 'N/A');
+    const courseCurriculum = String(curriculum || '').trim();
+
+    const parsedSubjects = Array.isArray(subjects) && subjects.length > 0
+      ? subjects
+      : typeof subjects === 'string'
+      ? subjects.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : ['Physics', 'Chemistry', 'Mathematics'];
+
+    // 1. Try Cloudflare D1
+    try {
+      const d1Success = await executeD1(
+        'UPDATE courses SET name = ?, description = ?, category = ?, board = ?, curriculum = ?, subjects_json = ?, marks_per_correct = ?, penalty_per_incorrect = ? WHERE id = ?',
+        [
+          name,
+          description || '',
+          courseCategory,
+          courseBoard,
+          courseCurriculum,
+          JSON.stringify(parsedSubjects),
+          marks_per_correct !== undefined ? Number(marks_per_correct) : 4,
+          penalty_per_incorrect !== undefined ? Number(penalty_per_incorrect) : 1,
+          courseId,
+        ]
+      );
+
+      if (d1Success) {
+        await executeD1(
+          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [generateId(), currentAdmin?.adminId || 'admin_master_1', currentAdmin?.name || 'Admin', 'UPDATE_COURSE', courseId, `Updated course "${name}" (${courseId})`]
+        );
+
+        return NextResponse.json({
+          success: true,
+          course: {
+            _id: courseId,
+            id: courseId,
+            name,
+            description,
+            category: courseCategory,
+            board: courseBoard,
+            curriculum: courseCurriculum,
+            subjects: parsedSubjects,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[Admin Course PUT D1 Error]:', e);
+    }
+
+    // 2. Memory Mode Fallback
+    const { isMemoryMode } = await dbConnect();
     if (isMemoryMode) {
       const db = readSharedDb();
-      const course = (db.courses || []).find((c) => c._id === courseId);
+      const course = (db.courses || []).find((c) => String(c._id) === String(courseId) || String(c.id) === String(courseId));
       if (!course) {
         return NextResponse.json({ error: 'Course not found' }, { status: 404 });
       }
 
       course.name = name;
-      course.category = category || course.category;
-      course.board = board !== undefined ? board : course.board;
-      course.curriculum = curriculum !== undefined ? curriculum : course.curriculum;
+      course.category = courseCategory;
+      course.board = courseBoard;
+      course.curriculum = courseCurriculum;
       course.description = description !== undefined ? description : course.description;
-      course.subjects = subjects || course.subjects;
-      if (!course.marking_scheme) course.marking_scheme = {};
-      course.marking_scheme.marks_per_correct = marks_per_correct !== undefined ? Number(marks_per_correct) : course.marking_scheme.marks_per_correct;
-      course.marking_scheme.penalty_per_incorrect = penalty_per_incorrect !== undefined ? Number(penalty_per_incorrect) : course.marking_scheme.penalty_per_incorrect;
+      course.subjects = parsedSubjects;
 
       if (!db.auditLogs) db.auditLogs = [];
       db.auditLogs.unshift({
@@ -101,21 +168,18 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ success: true, course });
     }
 
-    // Mongoose mode
+    // 3. Mongoose Fallback
     const course = await Course.findById(courseId);
     if (!course) {
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
     course.name = name;
-    if (category) course.category = category;
-    if (board !== undefined) course.board = board;
-    if (curriculum !== undefined) course.curriculum = curriculum;
+    if (category) course.category = courseCategory;
+    if (board !== undefined) course.board = courseBoard;
+    if (curriculum !== undefined) course.curriculum = courseCurriculum;
     if (description !== undefined) course.description = description;
-    if (subjects) course.subjects = subjects;
-    if (!course.marking_scheme) course.marking_scheme = { marks_per_correct: 4, penalty_per_incorrect: 1 };
-    if (marks_per_correct !== undefined) course.marking_scheme.marks_per_correct = Number(marks_per_correct);
-    if (penalty_per_incorrect !== undefined) course.marking_scheme.penalty_per_incorrect = Number(penalty_per_incorrect);
+    if (subjects) course.subjects = parsedSubjects;
 
     await course.save();
 

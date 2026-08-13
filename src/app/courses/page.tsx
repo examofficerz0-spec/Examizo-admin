@@ -160,7 +160,8 @@ export default function CourseManagementPage() {
         handleAddCustomBoardToList(customBoard.trim());
       }
 
-      const url = editingCourse ? `/api/courses/${editingCourse._id}` : '/api/courses';
+      const targetEditId = editingCourse._id || editingCourse.id;
+      const url = editingCourse ? `/api/courses/${targetEditId}` : '/api/courses';
       const method = editingCourse ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -205,7 +206,8 @@ export default function CourseManagementPage() {
   const handleRemoveCourse = async () => {
     if (!deletingCourse) return;
     try {
-      await fetch(`/api/courses/${deletingCourse._id}`, { method: 'DELETE' });
+      const targetDeleteId = deletingCourse._id || deletingCourse.id;
+      await fetch(`/api/courses/${targetDeleteId}`, { method: 'DELETE' });
       setDeletingCourse(null);
       fetchCourses();
     } catch (err) {
@@ -313,7 +315,7 @@ export default function CourseManagementPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {competitiveCourses.map((course) => (
                         <div
-                          key={course._id}
+                          key={course._id || course.id}
                           className="bg-white dark:bg-slate-900 border border-amber-200/60 dark:border-amber-900/30 rounded-xl p-5 shadow-xs flex flex-col justify-between"
                         >
                           <div>
@@ -400,7 +402,7 @@ export default function CourseManagementPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {schoolCourses.map((course) => (
                         <div
-                          key={course._id}
+                          key={course._id || course.id}
                           className="bg-white dark:bg-slate-900 border border-emerald-200/60 dark:border-emerald-900/30 rounded-xl p-5 shadow-xs flex flex-col justify-between"
                         >
                           <div>
