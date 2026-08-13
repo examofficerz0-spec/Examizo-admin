@@ -98,8 +98,8 @@ export async function POST(req: Request) {
           courseBoard,
           courseCurriculum,
           JSON.stringify(parsedSubjects),
-          marks_per_correct !== undefined ? Number(marks_per_correct) : 4,
-          penalty_per_incorrect !== undefined ? Number(penalty_per_incorrect) : 1,
+          marks_per_correct !== undefined ? parseFloat(String(marks_per_correct)) : 4,
+          penalty_per_incorrect !== undefined ? parseFloat(String(penalty_per_incorrect)) : 1,
         ]
       );
 
@@ -114,8 +114,8 @@ export async function POST(req: Request) {
           curriculum: courseCurriculum,
           subjects: parsedSubjects,
           marking_scheme: {
-            marks_per_correct: marks_per_correct !== undefined ? Number(marks_per_correct) : 4,
-            penalty_per_incorrect: penalty_per_incorrect !== undefined ? Number(penalty_per_incorrect) : 1,
+            marks_per_correct: marks_per_correct !== undefined ? parseFloat(String(marks_per_correct)) : 4,
+            penalty_per_incorrect: penalty_per_incorrect !== undefined ? parseFloat(String(penalty_per_incorrect)) : 1,
           },
           is_active: true,
         };

@@ -160,7 +160,7 @@ export default function CourseManagementPage() {
         handleAddCustomBoardToList(customBoard.trim());
       }
 
-      const targetEditId = editingCourse._id || editingCourse.id;
+      const targetEditId = editingCourse ? (editingCourse._id || editingCourse.id) : '';
       const url = editingCourse ? `/api/courses/${targetEditId}` : '/api/courses';
       const method = editingCourse ? 'PUT' : 'POST';
 
@@ -174,8 +174,8 @@ export default function CourseManagementPage() {
           curriculum: curriculum.trim(),
           description,
           subjects: parsedSubjects,
-          marks_per_correct: marksPerCorrect,
-          penalty_per_incorrect: penaltyPerIncorrect,
+          marks_per_correct: parseFloat(String(marksPerCorrect)) || 4,
+          penalty_per_incorrect: parseFloat(String(penaltyPerIncorrect)) || 0,
         }),
       });
 
@@ -197,7 +197,7 @@ export default function CourseManagementPage() {
         fetchCourses();
       }
     } catch (err: any) {
-      setError('An error occurred');
+      setError(err?.message || 'An error occurred');
     } finally {
       setSubmitting(false);
     }
@@ -730,10 +730,11 @@ export default function CourseManagementPage() {
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Marks for Correct</label>
                   <input
                     type="number"
-                    min={1}
+                    step="any"
+                    min={0}
                     required
                     value={marksPerCorrect}
-                    onChange={(e) => setMarksPerCorrect(Number(e.target.value))}
+                    onChange={(e) => setMarksPerCorrect(parseFloat(e.target.value) || 0)}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                   />
                 </div>
@@ -741,10 +742,11 @@ export default function CourseManagementPage() {
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Negative Penalty</label>
                   <input
                     type="number"
+                    step="any"
                     min={0}
                     required
                     value={penaltyPerIncorrect}
-                    onChange={(e) => setPenaltyPerIncorrect(Number(e.target.value))}
+                    onChange={(e) => setPenaltyPerIncorrect(parseFloat(e.target.value) || 0)}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                   />
                 </div>

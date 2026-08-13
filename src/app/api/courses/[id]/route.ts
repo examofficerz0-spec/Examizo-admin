@@ -107,8 +107,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           courseBoard,
           courseCurriculum,
           JSON.stringify(parsedSubjects),
-          marks_per_correct !== undefined ? Number(marks_per_correct) : 4,
-          penalty_per_incorrect !== undefined ? Number(penalty_per_incorrect) : 1,
+          marks_per_correct !== undefined ? parseFloat(String(marks_per_correct)) : 4,
+          penalty_per_incorrect !== undefined ? parseFloat(String(penalty_per_incorrect)) : 1,
           courseId,
         ]
       );
