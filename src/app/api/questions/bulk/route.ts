@@ -66,7 +66,7 @@ export async function POST(req: Request) {
         }
       }
 
-      const subj = q.subject || defaultSubject || 'Physics';
+      const subj = q.subject || defaultSubject || 'General';
       const chap = q.chapter || q.topic || defaultChapter || 'General';
       let topicTag = q.topic_tag || (subj && chap ? `${subj} - ${chap}` : subj || chap || 'General');
       if (topicTag && !topicTag.includes('-') && subj) {

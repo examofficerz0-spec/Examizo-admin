@@ -218,6 +218,51 @@ export default function QuestionManagementPage() {
   );
   const isScienceCourse = hasScience && !hasPhysicsOrChemConfigured;
 
+  const resolveToConfiguredSubject = (rawStr: string): string | null => {
+    if (!rawStr || typeof rawStr !== 'string') return null;
+    const str = rawStr.trim().toLowerCase();
+
+    // 1. Direct exact match (case-insensitive)
+    const directMatch = configuredCourseSubjects.find((s: any) => String(s).toLowerCase() === str);
+    if (directMatch) return directMatch;
+
+    // 2. GK / GS
+    if (configuredGkGsSubject) {
+      if (isGkGsName(str) || getGkGsSubDomainName(str)) {
+        return configuredGkGsSubject;
+      }
+    }
+
+    // 3. Arithmatics / Mathematics / Quantitative Aptitude
+    const hasAdvanceArith = configuredCourseSubjects.find((s: any) => /^(?:advance\s*arithm[ae]tic|advanced\s*math)/i.test(String(s)));
+    if (/^(?:advance\s*arithm[ae]tic|advanced\s*math)/i.test(str) && hasAdvanceArith) {
+      return hasAdvanceArith;
+    }
+    const hasArithmatics = configuredCourseSubjects.find((s: any) => /^(?:arithm[ae]tics?|math(?:ematics)?|quant(?:itative\s*aptitude)?)$/i.test(String(s)));
+    if (/^(?:arithm[ae]tics?|math(?:ematics)?|quant(?:itative\s*aptitude)?)/i.test(str) && hasArithmatics) {
+      return hasArithmatics;
+    }
+
+    // 4. Reasoning / General Intelligence
+    const hasReasoning = configuredCourseSubjects.find((s: any) => /^(?:reasoning|logical\s*reasoning|general\s*intelligence)/i.test(String(s)));
+    if (/^(?:reasoning|logical\s*reasoning|general\s*intelligence)/i.test(str) && hasReasoning) {
+      return hasReasoning;
+    }
+
+    // 5. Current Affairs
+    const hasCurrentAffairs = configuredCourseSubjects.find((s: any) => /^(?:current\s*aff[ai]+rs?)/i.test(String(s)));
+    if (/^(?:current\s*aff[ai]+rs?)/i.test(str) && hasCurrentAffairs) {
+      return hasCurrentAffairs;
+    }
+
+    // 6. Science
+    if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology', 'science'].includes(str)) {
+      return 'Science';
+    }
+
+    return null;
+  };
+
   // Extract subjects present in course questions (from q.subject or topic_tag hyphen prefix)
   const questionExtractedSubjects = Array.from(
     new Set(
@@ -234,21 +279,9 @@ export default function QuestionManagementPage() {
           }
           if (!sName) return null;
 
-          // If this course has a GK/GS subject, map all GK/GS sub-domains to that GK/GS subject
-          if (configuredGkGsSubject) {
-            const gkDomain = getGkGsSubDomainName(sName);
-            const isExplicitlyConfigured = configuredCourseSubjects.some(
-              (cs: any) => String(cs).toLowerCase() === sName.toLowerCase()
-            );
-            if (gkDomain && !isExplicitlyConfigured) {
-              return configuredGkGsSubject;
-            }
-          }
+          const resolved = resolveToConfiguredSubject(sName);
+          if (resolved) return resolved;
 
-          // If this course groups sub-sciences under "Science", do not spawn top-level Physics/Chemistry tabs
-          if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology'].includes(sName.toLowerCase())) {
-            return 'Science';
-          }
           return sName;
         })
         .filter(Boolean) as string[]
@@ -267,63 +300,24 @@ export default function QuestionManagementPage() {
     const tag = (q.topic_tag || '').trim();
     let sName = '';
 
-    // 0. Check if GK/GS mapping applies to this question
-    if (configuredGkGsSubject) {
-      const qSub = (q.subject || '').toString().trim();
-      const tagPrefix = tag.includes('-') ? tag.split('-')[0].trim() : tag;
-      const isExplicitlyConfiguredOther = configuredCourseSubjects.some(
-        (cs: any) =>
-          !isGkGsName(String(cs)) &&
-          (String(cs).toLowerCase() === qSub.toLowerCase() ||
-           String(cs).toLowerCase() === tagPrefix.toLowerCase())
-      );
+    const qSub = (q.subject || '').toString().trim();
+    const tagPrefix = tag.includes('-') ? tag.split('-')[0].trim() : tag;
 
-      if (!isExplicitlyConfiguredOther) {
-        if (
-          isGkGsName(qSub) ||
-          isGkGsName(tagPrefix) ||
-          getGkGsSubDomainName(qSub) ||
-          getGkGsSubDomainName(tagPrefix) ||
-          GK_GS_CANONICAL_MODULES.some((mod) => mod.match.test(tag) || mod.match.test(qSub))
-        ) {
-          sName = configuredGkGsSubject;
-        }
-      }
+    // 1. Try resolving qSub or tagPrefix to configured course subject
+    if (qSub) {
+      sName = resolveToConfiguredSubject(qSub) || '';
+    }
+    if (!sName && tagPrefix) {
+      sName = resolveToConfiguredSubject(tagPrefix) || '';
     }
 
-    // 1. Explicit q.subject property
-    if (!sName && q.subject) {
-      const qSub = String(q.subject).trim();
-      if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology'].includes(qSub.toLowerCase())) {
-        sName = 'Science';
-      } else {
-        const matched = allSubNames.find((s) => s.toLowerCase() === qSub.toLowerCase());
-        if (matched) sName = matched;
-      }
-    }
-
-    // 2. Check candidate before hyphen (e.g. "Chemistry" from "Chemistry - Organic")
-    if (!sName && tag.includes('-')) {
-      const candidate = tag.split('-')[0].trim();
-      if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology'].includes(candidate.toLowerCase())) {
-        sName = 'Science';
-      } else {
-        const matched = allSubNames.find((s) => s.toLowerCase() === candidate.toLowerCase());
-        if (matched) sName = matched;
-      }
-    }
-
-    // 3. Substring match ANYWHERE inside topic_tag
+    // 2. Substring match across all configured subjects
     if (!sName && tag) {
-      if (isScienceCourse && /(?:physics|chemistry|biology|botany|zoology|chem|phys|bio)/i.test(tag)) {
-        sName = 'Science';
-      } else {
-        const matched = allSubNames.find((s) => tag.toLowerCase().includes(s.toLowerCase()));
-        if (matched) sName = matched;
-      }
+      const matched = allSubNames.find((s) => tag.toLowerCase().includes(s.toLowerCase()));
+      if (matched) sName = matched;
     }
 
-    // 4. Fallback to primary subject only if no match found
+    // 3. Fallback to primary subject only if no match found
     if (!sName) {
       sName = allSubNames[0] || 'General';
     }
@@ -474,14 +468,19 @@ export default function QuestionManagementPage() {
     setSubmitting(true);
 
     try {
-      const computedTag = selectedSubject && selectedTopic ? `${selectedSubject} - ${selectedTopic}` : topicTag || 'General';
+      const finalSubject = selectedSubject || 'General';
+      const rawTopic = selectedTopic || topicTag || 'General Module';
+      const cleanTopic = rawTopic.toLowerCase().startsWith(finalSubject.toLowerCase())
+        ? rawTopic.slice(finalSubject.length).replace(/^[\s\-:]+/, '').trim() || rawTopic
+        : rawTopic;
+      const computedTag = `${finalSubject} - ${cleanTopic}`;
 
       const res = await fetch('/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           course_id: selectedCourseId,
-          subject: selectedSubject || '',
+          subject: finalSubject,
           topic_tag: computedTag,
           question_type: questionType,
           question_text: questionText,
@@ -708,16 +707,23 @@ export default function QuestionManagementPage() {
         // Extract metadata
         const exp = expKey ? String(row[expKey] || '').trim() : '';
         const detExp = detExpKey ? String(row[detExpKey] || '').trim() : '';
-        const rowSubject = subjKey ? String(row[subjKey] || '').trim() : '';
-        const rowTopic = topicKey ? String(row[topicKey] || '').trim() : '';
+        const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey ? String(row[subjKey] || '').trim() : '') || (subjKey ? String(row[subjKey] || '').trim() : '') || 'General';
+        let rowTopic = selectedTopic || (topicKey ? String(row[topicKey] || '').trim() : '');
+        if (!rowTopic && qText && subjKey && row[subjKey] && row[subjKey] !== rowSubject) {
+          rowTopic = String(row[subjKey] || '').trim();
+        }
+        if (!rowTopic) rowTopic = 'General Module';
 
-        const rowSub = rowSubject || selectedSubject || 'General';
-        const rowTop = rowTopic || selectedTopic || 'General';
+        // Strip subject prefix from topic if present
+        if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
+          rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+        }
 
         parsedList.push({
           course_id: selectedCourseId,
-          subject: rowSub,
-          topic_tag: `${rowSub} - ${rowTop}`,
+          subject: rowSubject,
+          topic: rowTopic,
+          topic_tag: `${rowSubject} - ${rowTopic}`,
           question_text: qText,
           options: cleanOpts,
           correct_option: correctIndex,
@@ -879,19 +885,40 @@ export default function QuestionManagementPage() {
         : 'General Module';
 
       const resolveQSubject = (q: any) => {
-        if (q.subject && q.subject.trim()) return q.subject.trim();
-        if (q.topic_tag && q.topic_tag.includes('-')) return q.topic_tag.split('-')[0].trim();
-        return selectedSubject || 'General';
+        if (selectedSubject) return selectedSubject;
+        const raw = (q.subject && q.subject.trim()) || (q.topic_tag && q.topic_tag.includes('-') ? q.topic_tag.split('-')[0].trim() : '');
+        const matched = resolveToConfiguredSubject(raw);
+        if (matched) return matched;
+        return raw || 'General';
       };
 
       const resolveQTopicTag = (q: any) => {
-        if (q.topic_tag && q.topic_tag.trim() && !['general', 'general module'].includes(q.topic_tag.trim().toLowerCase())) {
-          return q.topic_tag.trim();
+        const finalSub = resolveQSubject(q);
+        
+        let rawTopic = selectedTopic || '';
+        if (!rawTopic) {
+          if (q.topic && String(q.topic).trim()) {
+            rawTopic = String(q.topic).trim();
+          } else if (q.topic_tag && String(q.topic_tag).trim()) {
+            const t = String(q.topic_tag).trim();
+            if (t.includes('-')) {
+              rawTopic = t.split('-').slice(1).join('-').trim() || t.split('-')[0].trim();
+            } else {
+              rawTopic = t;
+            }
+          }
         }
-        if (selectedSubject) {
-          return selectedTopic ? `${selectedSubject} - ${selectedTopic}` : `${selectedSubject} - General Module`;
+        
+        if (!rawTopic || ['general', 'general module'].includes(rawTopic.toLowerCase())) {
+          rawTopic = 'General Module';
         }
-        return 'General Module';
+
+        // Clean subject prefix from rawTopic if repeated
+        if (rawTopic.toLowerCase().startsWith(finalSub.toLowerCase())) {
+          rawTopic = rawTopic.slice(finalSub.length).replace(/^[\s\-:]+/, '').trim() || rawTopic;
+        }
+
+        return `${finalSub} - ${rawTopic}`;
       };
 
       if (bulkMode === 'text') {
