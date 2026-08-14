@@ -1280,33 +1280,59 @@ export default function UserManagementPage() {
 
       {/* Confirmation Action Modal */}
       {activeActionModal && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-sm w-full shadow-lg text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
+              activeActionModal.type === 'activate'
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                : activeActionModal.type === 'suspend'
+                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                : 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+            }`}>
               <AlertTriangle className="w-6 h-6" />
             </div>
 
-            <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-1 capitalize">
-              {activeActionModal.targetType === 'admin' ? 'Remove Admin Account' : `${activeActionModal.type} Account`}
-            </h3>
-            <p className="text-xs text-slate-500 mb-6">
-              Target: <strong className="text-slate-800 dark:text-slate-200">{activeActionModal.entity.name}</strong> ({activeActionModal.entity.email})
-            </p>
+            <div className="space-y-1">
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                {activeActionModal.targetType === 'admin'
+                  ? 'Remove Admin Account'
+                  : activeActionModal.type === 'suspend'
+                  ? 'Suspend Account'
+                  : activeActionModal.type === 'activate'
+                  ? 'Reactivate Account'
+                  : 'Delete Account'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Target: <strong className="text-slate-800 dark:text-slate-200">{activeActionModal.entity.name}</strong> ({activeActionModal.entity.email})
+              </p>
+            </div>
 
-            <div className="flex justify-center gap-3">
+            <div className="flex justify-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setActiveActionModal(null)}
-                className="px-4 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-300"
+                className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={executeConfirmedAction}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm"
+                className={`px-5 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-md transition-all ${
+                  activeActionModal.type === 'activate'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+                    : activeActionModal.type === 'suspend'
+                    ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30'
+                    : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+                }`}
               >
-                Confirm Removal
+                {activeActionModal.targetType === 'admin'
+                  ? 'Confirm Removal'
+                  : activeActionModal.type === 'suspend'
+                  ? 'Confirm Suspension'
+                  : activeActionModal.type === 'activate'
+                  ? 'Confirm Reactivation'
+                  : 'Confirm Deletion'}
               </button>
             </div>
           </div>
