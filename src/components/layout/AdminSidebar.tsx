@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Logo } from '../common/Logo';
-import { LayoutDashboard, HelpCircle, BookOpen, Users, ClipboardList, FileCheck, LogOut, X, FolderDown, Trophy } from 'lucide-react';
+import { LayoutDashboard, HelpCircle, BookOpen, Users, ClipboardList, FileCheck, LogOut, X, FolderDown, Trophy, Image as ImageIcon } from 'lucide-react';
 
 export const AdminSidebar: React.FC = () => {
   const pathname = usePathname();
@@ -48,6 +48,7 @@ export const AdminSidebar: React.FC = () => {
     { label: 'Mock Tests', href: '/mock-tests', icon: FileCheck, perm: 'manage_mock_tests' },
     { label: 'Resource Center', href: '/resources', icon: FolderDown, perm: 'manage_resources' },
     { label: 'Course Catalogue', href: '/courses', icon: BookOpen, perm: 'manage_courses' },
+    { label: 'Gallery Showcase', href: '/gallery', icon: ImageIcon, perm: 'always' },
     { label: 'User Management', href: '/users', icon: Users, perm: 'manage_users' },
     { label: 'Student Performance', href: '/student-performance', icon: Trophy, perm: 'manage_users' },
     { label: 'Audit Logs', href: '/audit-logs', icon: ClipboardList, perm: 'view_audit_logs' },
