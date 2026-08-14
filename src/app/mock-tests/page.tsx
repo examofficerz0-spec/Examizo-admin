@@ -206,8 +206,24 @@ export default function MockTestManagementPage() {
 
   const getSubjectAndTopic = (q: any) => {
     const tag = (q.topic_tag || '').trim();
+    const qSub = (q.subject || '').toString().trim();
     let subject = 'General';
     let topic = tag;
+
+    // Check GK/GS mapping
+    const isGkGsName = (name: string) => /^(?:gk\/?gs|gk|gs|general\s*(?:knowledge|studies|awareness))/i.test(name.trim());
+    const gkGsSub = activeCourseSubjects.find((s) => isGkGsName(s));
+    if (gkGsSub) {
+      const gkKeywords = [
+        'general knowledge', 'environment', 'general science', 'indian economy',
+        'world geography', 'indian geography', 'indian history', 'indian polity',
+        'history', 'geography', 'polity', 'economy', 'ecology', 'static gk'
+      ];
+      if (gkKeywords.some((k) => tag.toLowerCase().includes(k) || qSub.toLowerCase().includes(k))) {
+        let cleanTag = tag.replace(/^(?:gk\/?gs|gk|gs|general\s*studies)\s*[\-\:\.]\s*/i, '').trim();
+        return { subject: gkGsSub, topic: cleanTag || 'General Topics' };
+      }
+    }
 
     for (const s of activeCourseSubjects) {
       if (tag.toLowerCase().startsWith(s.toLowerCase())) {

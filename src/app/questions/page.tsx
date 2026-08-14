@@ -168,6 +168,50 @@ export default function QuestionManagementPage() {
 
   const userAddedSubs = customSubjects[selectedCourseId] || [];
 
+  // GK / GS subject detection
+  const isGkGsName = (name: string) => {
+    if (!name || typeof name !== 'string') return false;
+    const n = name.trim().toLowerCase();
+    return (
+      n === 'gk/gs' ||
+      n === 'gk/ gs' ||
+      n === 'gk / gs' ||
+      n === 'gk-gs' ||
+      n === 'gk gs' ||
+      n === 'gk' ||
+      n === 'gs' ||
+      n === 'general knowledge' ||
+      n === 'general studies' ||
+      n === 'general awareness' ||
+      n.includes('gk') ||
+      n.includes('general studies') ||
+      n.includes('general awareness')
+    );
+  };
+
+  const configuredGkGsSubject = configuredCourseSubjects.find((s: any) => isGkGsName(String(s)));
+
+  // GK/GS canonical modules definition
+  const GK_GS_CANONICAL_MODULES: { match: RegExp; name: string }[] = [
+    { match: /^(?:general\s*knowledge|static\s*gk|gk)/i, name: 'General Knowledge' },
+    { match: /^(?:environment(?:al\s*(?:studies|science))?|ecology)/i, name: 'Environment' },
+    { match: /^(?:general\s*science|science)/i, name: 'General Science' },
+    { match: /^(?:indian\s*economy|economy|economics)/i, name: 'Indian Economy' },
+    { match: /^(?:world\s*geography)/i, name: 'World Geography' },
+    { match: /^(?:indian\s*geography|geography)/i, name: 'Indian Geography' },
+    { match: /^(?:indian\s*history|ancient\s*india|medieval\s*india|modern\s*india|freedom\s*movement|history)/i, name: 'Indian History' },
+    { match: /^(?:indian\s*polity|polity|constitution|civics)/i, name: 'Indian Polity' },
+  ];
+
+  const getGkGsSubDomainName = (str: string): string | null => {
+    if (!str || typeof str !== 'string') return null;
+    const s = str.trim();
+    for (const mod of GK_GS_CANONICAL_MODULES) {
+      if (mod.match.test(s)) return mod.name;
+    }
+    return null;
+  };
+
   const hasScience = configuredCourseSubjects.some((s: any) => String(s).toLowerCase() === 'science');
   const hasPhysicsOrChemConfigured = configuredCourseSubjects.some(
     (s: any) => String(s).toLowerCase() === 'physics' || String(s).toLowerCase() === 'chemistry'
@@ -189,6 +233,18 @@ export default function QuestionManagementPage() {
             }
           }
           if (!sName) return null;
+
+          // If this course has a GK/GS subject, map all GK/GS sub-domains to that GK/GS subject
+          if (configuredGkGsSubject) {
+            const gkDomain = getGkGsSubDomainName(sName);
+            const isExplicitlyConfigured = configuredCourseSubjects.some(
+              (cs: any) => String(cs).toLowerCase() === sName.toLowerCase()
+            );
+            if (gkDomain && !isExplicitlyConfigured) {
+              return configuredGkGsSubject;
+            }
+          }
+
           // If this course groups sub-sciences under "Science", do not spawn top-level Physics/Chemistry tabs
           if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology'].includes(sName.toLowerCase())) {
             return 'Science';
@@ -211,8 +267,32 @@ export default function QuestionManagementPage() {
     const tag = (q.topic_tag || '').trim();
     let sName = '';
 
-    // 1. Explicit q.subject property (highest priority)
-    if (q.subject) {
+    // 0. Check if GK/GS mapping applies to this question
+    if (configuredGkGsSubject) {
+      const qSub = (q.subject || '').toString().trim();
+      const tagPrefix = tag.includes('-') ? tag.split('-')[0].trim() : tag;
+      const isExplicitlyConfiguredOther = configuredCourseSubjects.some(
+        (cs: any) =>
+          !isGkGsName(String(cs)) &&
+          (String(cs).toLowerCase() === qSub.toLowerCase() ||
+           String(cs).toLowerCase() === tagPrefix.toLowerCase())
+      );
+
+      if (!isExplicitlyConfiguredOther) {
+        if (
+          isGkGsName(qSub) ||
+          isGkGsName(tagPrefix) ||
+          getGkGsSubDomainName(qSub) ||
+          getGkGsSubDomainName(tagPrefix) ||
+          GK_GS_CANONICAL_MODULES.some((mod) => mod.match.test(tag) || mod.match.test(qSub))
+        ) {
+          sName = configuredGkGsSubject;
+        }
+      }
+    }
+
+    // 1. Explicit q.subject property
+    if (!sName && q.subject) {
       const qSub = String(q.subject).trim();
       if (isScienceCourse && ['physics', 'chemistry', 'biology', 'botany', 'zoology'].includes(qSub.toLowerCase())) {
         sName = 'Science';
@@ -258,24 +338,65 @@ export default function QuestionManagementPage() {
 
   const userAddedTopics = customTopics[`${selectedCourseId}_${selectedSubject}`] || [];
 
+  const isCurrentSubGkGs = isGkGsName(selectedSubject);
+
+  const getQuestionTopicName = (q: any): string => {
+    const tag = (q.topic_tag || '').trim();
+    const qSub = (q.subject || '').toString().trim();
+
+    if (isCurrentSubGkGs) {
+      let cleanTag = tag.replace(/^(?:gk\/?gs|gk|gs|general\s*studies)\s*[\-\:\.]\s*/i, '').trim();
+
+      const tagDomain = getGkGsSubDomainName(cleanTag.includes('-') ? cleanTag.split('-')[0].trim() : cleanTag);
+      if (tagDomain) return tagDomain;
+
+      const subDomain = getGkGsSubDomainName(qSub);
+      if (subDomain) return subDomain;
+
+      for (const mod of GK_GS_CANONICAL_MODULES) {
+        if (mod.match.test(cleanTag) || mod.match.test(qSub)) {
+          return mod.name;
+        }
+      }
+
+      if (cleanTag.includes('-')) {
+        return cleanTag.split('-')[0].trim() || 'General Module';
+      }
+      return cleanTag || 'General Module';
+    }
+
+    // Standard subject topic resolution
+    if (tag.includes('-')) {
+      const parts = tag.split('-');
+      if (parts[0].trim().toLowerCase() === selectedSubject.toLowerCase()) {
+        return parts.slice(1).join('-').trim() || 'General Module';
+      }
+      return parts.slice(1).join('-').trim() || parts[0].trim() || 'General Module';
+    }
+    return tag || 'General Module';
+  };
+
   // Extract all topic names present in subjectQuestions
   const extractedTopicsFromQuestions = Array.from(
-    new Set(
-      subjectQuestions.map((q) => {
-        const tag = (q.topic_tag || '').trim();
-        if (!tag) return 'General Module';
-        if (tag.includes('-')) {
-          const parts = tag.split('-');
-          return parts.slice(1).join('-').trim() || 'General Module';
-        }
-        return tag;
-      })
-    )
-  );
+    new Set(subjectQuestions.map((q) => getQuestionTopicName(q)))
+  ).filter(Boolean);
 
   const allTopicNames = Array.from(
     new Set([...extractedTopicsFromQuestions, ...userAddedTopics])
   ).filter(Boolean);
+
+  // If GK/GS, sort topics in canonical order
+  if (isCurrentSubGkGs) {
+    const canonicalOrder = GK_GS_CANONICAL_MODULES.map((m) => m.name);
+    allTopicNames.sort((a, b) => {
+      const idxA = canonicalOrder.indexOf(a);
+      const idxB = canonicalOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }
 
   // Initialize topicsMap with all topic names
   allTopicNames.forEach((t) => {
@@ -283,20 +404,7 @@ export default function QuestionManagementPage() {
   });
 
   subjectQuestions.forEach((q) => {
-    const tag = (q.topic_tag || '').trim();
-    let tName = '';
-
-    if (tag.includes('-')) {
-      const parts = tag.split('-');
-      tName = parts.slice(1).join('-').trim();
-    } else if (tag) {
-      tName = tag;
-    }
-
-    if (!tName) {
-      tName = 'General Module';
-    }
-
+    const tName = getQuestionTopicName(q);
     if (!topicsMap[tName]) topicsMap[tName] = [];
     topicsMap[tName].push(q);
   });
@@ -310,12 +418,16 @@ export default function QuestionManagementPage() {
       if (tag === sTopicLower) return true;
       if (tag.endsWith(`- ${sTopicLower}`) || tag.endsWith(`-${sTopicLower}`)) return true;
       if (tag.includes(sTopicLower)) return true;
+      if (isCurrentSubGkGs) {
+        const qTopic = getQuestionTopicName(q).toLowerCase();
+        if (qTopic === sTopicLower) return true;
+      }
       return false;
     })
   );
 
-  const uniqueTopicQuestions = Array.from(new Set(topicQuestions.map((q) => q._id)))
-    .map((id) => topicQuestions.find((q) => q._id === id))
+  const uniqueTopicQuestions = Array.from(new Set(topicQuestions.map((q) => q._id || q.id)))
+    .map((id) => topicQuestions.find((q) => (q._id || q.id) === id))
     .filter(Boolean);
 
   // Handlers
@@ -1176,12 +1288,6 @@ export default function QuestionManagementPage() {
                           <Trash2 className="w-4 h-4" /> Delete Selected ({selectedSubjectNames.length})
                         </button>
                       )}
-                      <button
-                        onClick={() => setShowBulkModal(true)}
-                        className="px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 rounded-lg flex items-center gap-1.5 shadow-xs hover:border-slate-400 cursor-pointer transition-colors"
-                      >
-                        <Upload className="w-4 h-4 text-slate-700 dark:text-slate-300" /> + Bulk Upload
-                      </button>
                       <button
                         onClick={() => setShowSubjectModal(true)}
                         className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
