@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
-import { Users, Search, UserPlus, ShieldCheck, Trash2, X, AlertTriangle, Shield, Edit3, BookOpen, Key, CheckSquare, Square, Eye, EyeOff, Bell, Send, Sparkles, CheckCircle2, Lock, ChevronDown, ChevronUp, Layers, BarChart2 } from 'lucide-react';
+import { Users, Search, UserPlus, ShieldCheck, Trash2, X, AlertTriangle, Shield, Edit3, BookOpen, Key, CheckSquare, Square, Eye, EyeOff, Bell, Send, CheckCircle2, Lock, ChevronDown, ChevronUp, Layers, BarChart2 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
   { id: 'manage_questions', label: 'Manage & Add Questions', desc: 'Create, edit, and curate topic question bank' },
@@ -1342,7 +1342,7 @@ export default function UserManagementPage() {
       {/* Notification Success Toast */}
       {notifToast && (
         <div className="fixed bottom-6 right-6 z-50 px-5 py-3 bg-slate-900 text-white font-bold text-xs rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-bounce">
-          <Sparkles className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{notifToast}</span>
         </div>
       )}

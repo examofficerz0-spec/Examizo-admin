@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
-import { FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, Sparkles, CheckCircle2, BookOpen, Filter, CheckSquare, Square, Search, Folder } from 'lucide-react';
+import { FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2, BookOpen, Filter, CheckSquare, Square, Search, Folder } from 'lucide-react';
 
 export default function MockTestManagementPage() {
   const [activeTab, setActiveTab] = useState<'mock_tests' | 'weekly_dpp'>('mock_tests');
@@ -426,7 +426,7 @@ export default function MockTestManagementPage() {
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <Sparkles className="w-4 h-4 text-emerald-500" /> Weekly DPP Papers ({weeklyDpps.length})
+              <FileCheck className="w-4 h-4 text-emerald-500" /> Weekly DPP Papers ({weeklyDpps.length})
             </button>
           </div>
 
@@ -537,7 +537,7 @@ export default function MockTestManagementPage() {
                   <div className="col-span-full p-12 text-center text-xs text-slate-500">Loading weekly DPPs...</div>
                 ) : weeklyDpps.length === 0 ? (
                   <div className="col-span-full p-12 text-center text-xs text-slate-500 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
-                    <Sparkles className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
+                    <HelpCircle className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
                     No custom Weekly DPP configured yet. Click 'Create Weekly DPP' to add questions and duration!
                   </div>
                 ) : (
@@ -606,7 +606,7 @@ export default function MockTestManagementPage() {
             {/* Quick Presets Banner */}
             <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-semibold">
-                <Sparkles className="w-4 h-4 text-amber-600" />
+                <FileCheck className="w-4 h-4 text-amber-600" />
                 <span>Quick Preset Templates:</span>
               </div>
               <div className="flex gap-2">
@@ -940,7 +940,7 @@ export default function MockTestManagementPage() {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-emerald-500" /> Configure New Weekly DPP
+                <Plus className="w-5 h-5 text-emerald-500" /> Configure New Weekly DPP
               </h3>
               <button
                 type="button"

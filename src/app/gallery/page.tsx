@@ -14,7 +14,6 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Layers, 
-  Sparkles,
   X,
   ArrowUpDown
 } from 'lucide-react';
@@ -238,7 +237,7 @@ export default function AdminGalleryPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-8 rounded-3xl text-white shadow-xl">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5" />
+            <ImageIcon className="w-3.5 h-3.5" />
             <span>Public Media &amp; Showcase</span>
           </div>
           <h1 className="text-3xl font-black tracking-tight">Gallery Showcase Management</h1>

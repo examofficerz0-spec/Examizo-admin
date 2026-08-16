@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
-import { BookOpen, Plus, Trash2, AlertTriangle, X, Trophy, GraduationCap, Sparkles, ChevronDown, Edit2 } from 'lucide-react';
+import { BookOpen, Plus, Trash2, AlertTriangle, X, Trophy, GraduationCap, ChevronDown, Edit2 } from 'lucide-react';
 
 export default function CourseManagementPage() {
   const [courses, setCourses] = useState<any[]>([]);
