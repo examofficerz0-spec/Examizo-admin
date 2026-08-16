@@ -35,8 +35,10 @@ export const AdminSidebar: React.FC = () => {
   }, []);
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    window.location.href = '/login';
   };
 
   const isSuper = !adminInfo || adminInfo.role === 'Super Admin' || (adminInfo.permissions || []).includes('all');
