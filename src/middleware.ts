@@ -58,12 +58,17 @@ async function verifyToken(token: string): Promise<any | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Allow Next.js internals, static files, favicon, etc.
+  // 1. Allow Next.js internals, static files, favicon, public images, etc.
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
     pathname === '/favicon.ico' ||
-    pathname.includes('.')
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.jpeg') ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.webp') ||
+    pathname.endsWith('.ico')
   ) {
     return NextResponse.next();
   }
@@ -72,9 +77,9 @@ export async function middleware(request: NextRequest) {
   const admin = token ? await verifyToken(token) : null;
   const isAuthenticated = !!admin;
 
-  // 2. If authenticated admin visits /login -> redirect to root dashboard
+  // 2. If authenticated admin visits /login -> redirect to /dashboard
   if (isAuthenticated && pathname === '/login') {
-    const dashboardUrl = new URL('/', request.url);
+    const dashboardUrl = new URL('/dashboard', request.url);
     return NextResponse.redirect(dashboardUrl);
   }
 
@@ -101,7 +106,9 @@ export async function middleware(request: NextRequest) {
   // 5. If path is a protected page and not authenticated -> Redirect to /login
   if (!isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    if (pathname !== '/' && pathname !== '/dashboard') {
+      loginUrl.searchParams.set('redirect', pathname);
+    }
     return NextResponse.redirect(loginUrl);
   }
 
