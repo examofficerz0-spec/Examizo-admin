@@ -541,7 +541,7 @@ export default function QuestionManagementPage() {
 
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellText: false, WTF: false });
 
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
         setExcelError('The selected spreadsheet has no readable sheets.');
@@ -561,6 +561,31 @@ export default function QuestionManagementPage() {
       for (const sheetName of workbook.SheetNames) {
         const worksheet = workbook.Sheets[sheetName];
         if (!worksheet) continue;
+
+        // Force-expand worksheet !ref to cover ALL actual cells
+        // Some Excel generators set a limited print area / used range that truncates data
+        if (worksheet['!ref']) {
+          const range = XLSX.utils.decode_range(worksheet['!ref']);
+          for (const cellAddr in worksheet) {
+            if (cellAddr[0] === '!') continue;
+            const cell = XLSX.utils.decode_cell(cellAddr);
+            if (cell.r > range.e.r) range.e.r = cell.r;
+            if (cell.c > range.e.c) range.e.c = cell.c;
+          }
+          worksheet['!ref'] = XLSX.utils.encode_range(range);
+        } else {
+          // No !ref at all — build one from all cells
+          let maxR = 0, maxC = 0;
+          for (const cellAddr in worksheet) {
+            if (cellAddr[0] === '!') continue;
+            const cell = XLSX.utils.decode_cell(cellAddr);
+            if (cell.r > maxR) maxR = cell.r;
+            if (cell.c > maxC) maxC = cell.c;
+          }
+          if (maxR > 0 || maxC > 0) {
+            worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+          }
+        }
 
         // Extract 2D rows (header: 1)
         const rawGrid: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
