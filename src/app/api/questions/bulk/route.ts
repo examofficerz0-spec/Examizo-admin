@@ -101,10 +101,15 @@ export async function POST(req: Request) {
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       let d1InsertedCount = 0;
-      for (const q of preparedQuestions) {
-        const d1Success = await executeD1(
-          'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-          [
+      const CHUNK_SIZE = 25; // Safe variable limit for SQLite multi-row INSERT
+
+      for (let i = 0; i < preparedQuestions.length; i += CHUNK_SIZE) {
+        const chunk = preparedQuestions.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').join(', ');
+        const params: any[] = [];
+
+        chunk.forEach((q) => {
+          params.push(
             q.id,
             q.course_id,
             q.topic_tag,
@@ -115,10 +120,39 @@ export async function POST(req: Request) {
             '',
             1,
             q.explanation || '',
-            q.detailed_explanation || '',
-          ]
+            q.detailed_explanation || ''
+          );
+        });
+
+        const d1Success = await executeD1(
+          `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES ${placeholders}`,
+          params
         );
-        if (d1Success) d1InsertedCount++;
+
+        if (d1Success) {
+          d1InsertedCount += chunk.length;
+        } else {
+          // Fallback to individual inserts for this chunk
+          for (const q of chunk) {
+            const singleSuccess = await executeD1(
+              'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+              [
+                q.id,
+                q.course_id,
+                q.topic_tag,
+                'MCQ',
+                q.question_text,
+                JSON.stringify(q.options),
+                q.correct_option,
+                '',
+                1,
+                q.explanation || '',
+                q.detailed_explanation || '',
+              ]
+            );
+            if (singleSuccess) d1InsertedCount++;
+          }
+        }
       }
 
       if (d1InsertedCount > 0) {

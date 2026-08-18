@@ -521,7 +521,7 @@ export default function QuestionManagementPage() {
 
 
 
-  // Excel / Spreadsheet file parsing with Fail-Safe 2D Row Engine
+  // Multi-Sheet Robust Excel & CSV Parser Engine
   const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -534,211 +534,242 @@ export default function QuestionManagementPage() {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 
-      // Find best worksheet (the sheet with the most data rows)
-      let bestSheetName = workbook.SheetNames[0];
-      let maxRowsCount = 0;
-
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        if (sheet) {
-          const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
-          const nonEmpCount = rows.filter((r) => Array.isArray(r) && r.some((c) => String(c || '').trim() !== '')).length;
-          if (nonEmpCount > maxRowsCount) {
-            maxRowsCount = nonEmpCount;
-            bestSheetName = sheetName;
-          }
-        }
-      }
-
-      const worksheet = workbook.Sheets[bestSheetName];
-
-      // ═══════════════════════════════════════════════════════════
-      // PRIMARY PARSER: Use XLSX's object mode (header names as keys)
-      // ═══════════════════════════════════════════════════════════
-      const objRows: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
-
-      if (!objRows || objRows.length === 0) {
-        setExcelError('The selected spreadsheet is empty or has no readable rows.');
+      if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+        setExcelError('The selected spreadsheet has no readable sheets.');
         setParsedExcelQuestions([]);
         return;
       }
 
-      // Get all column keys from first row
-      const allKeys = Object.keys(objRows[0] || {});
-      console.log('[ExcelParser] Keys found:', allKeys);
+      const allParsedQuestions: any[] = [];
+      const sheetStats: string[] = [];
 
-      if (allKeys.length < 2) {
-        setExcelError('Too few columns detected. Please ensure the file has proper headers.');
-        setParsedExcelQuestions([]);
-        return;
-      }
-
-      // Helper: find a key by matching patterns against normalized key names
-      const findKey = (patterns: string[], exclude?: RegExp): string | null => {
-        for (const key of allKeys) {
-          const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (exclude && exclude.test(norm)) continue;
-          for (const p of patterns) {
-            if (norm === p || norm.includes(p)) return key;
-          }
-        }
-        return null;
-      };
-
-      // Map column roles to actual key names
-      const subjKey = findKey(['subject', 'subj', 'category']);
-      const topicKey = findKey(['topic', 'chapter', 'module', 'unit', 'section']);
-
-      // Question key: match exact first, then fuzzy, always exclude number/type/id columns
-      let qKey = findKey(['questiontext', 'question', 'prompt', 'problem', 'statement', 'mcq'],
-        /^(questionno|questionnumber|questiontype|questionid|qno|qid|sno|srno|slno|serialno|serial)$/);
-      // If qKey matched a "questionno" or similar via includes, verify it has diverse values
-      if (qKey) {
-        const norm = qKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (norm.includes('no') || norm.includes('num') || norm.includes('id') || norm.includes('type') || norm.includes('serial') || norm.includes('sr')) {
-          // Likely a question number column, not question text — reject
-          qKey = null;
-        }
-      }
-
-      const optAKey = findKey(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1']) ||
-        allKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'a') || null;
-      const optBKey = findKey(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2']) ||
-        allKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'b') || null;
-      const optCKey = findKey(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3']) ||
-        allKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'c') || null;
-      const optDKey = findKey(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4']) ||
-        allKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'd') || null;
-      const ansKey = findKey(['answer', 'correct', 'ans', 'key', 'correctoption', 'correctanswer']);
-      const expKey = findKey(['explanation', 'solution', 'reason', 'rationale']);
-      const detExpKey = findKey(['detailedexplanation', 'detailed', 'stepbystep', 'workedout']);
-      const marksKey = findKey(['marks', 'points', 'score', 'weight']);
-
-      // If no question key found by name, auto-detect: find the key with longest, most diverse values
-      if (!qKey) {
-        const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
-        let bestKey: string | null = null;
-        let bestScore = 0;
-        for (const key of allKeys) {
-          if (usedKeys.has(key)) continue;
-          const samples = objRows.slice(0, 25).map((r) => String(r[key] || '').trim()).filter(Boolean);
-          const diversity = new Set(samples).size;
-          const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
-          const score = diversity * avgLen;
-          if (score > bestScore && avgLen > 10) {
-            bestScore = score;
-            bestKey = key;
-          }
-        }
-        if (bestKey) qKey = bestKey;
-      }
-
-      console.log('[ExcelParser] Key mapping:', { subjKey, topicKey, qKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey });
-      console.log('[ExcelParser] First row sample:', objRows[0]);
-      // Log first 5 question texts to debug identical-question issue
-      if (qKey) {
-        console.log('[ExcelParser] First 5 question values from qKey "' + qKey + '":',
-          objRows.slice(0, 5).map((r, i) => `Row${i}: "${String(r[qKey!] || '').trim().substring(0, 60)}"`));
-      }
-      console.log('[ExcelParser] All column keys with first value:', allKeys.map(k => `"${k}": "${String(objRows[0][k] || '').substring(0, 40)}"`));
-
-      // Strip option prefixes like "A) Water" → "Water"
+      // Helper: clean option text
       const stripOptPrefix = (text: string): string => {
         const stripped = text.replace(/^(?:\(?\s*[A-Da-d]\s*\)?[\.\)\:\-]\s*|\(?\s*\d\s*\)?[\.\)\:\-]\s*)/i, '').trim();
         return stripped || text;
       };
 
-      // Parse each row into a question object
-      const parsedList: any[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const worksheet = workbook.Sheets[sheetName];
+        if (!worksheet) continue;
 
-      for (const row of objRows) {
-        // Get question text
-        let qText = qKey ? String(row[qKey] || '').trim() : '';
+        // Extract 2D rows (header: 1)
+        const rawGrid: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
+        if (!rawGrid || rawGrid.length === 0) continue;
 
-        // If qKey didn't provide text, try finding the longest diverse cell in this row
-        if (!qText) {
-          const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
-          let bestVal = '';
-          for (const key of allKeys) {
-            if (usedKeys.has(key)) continue;
-            const val = String(row[key] || '').trim();
-            if (val.length > bestVal.length) bestVal = val;
+        // Filter non-empty rows
+        const nonEmptyRows = rawGrid.filter((r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== ''));
+        if (nonEmptyRows.length === 0) continue;
+
+        // Auto-detect header row index (scanning first 15 rows)
+        let headerRowIdx = 0;
+        let maxHeaderScore = 0;
+        const headerKeywords = [
+          'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext',
+          'option', 'choice', 'opta', 'opt1', 'opt a', 'option a', 'option 1',
+          'answer', 'correct', 'ans', 'solution', 'explanation', 'subject', 'topic', 'chapter'
+        ];
+
+        for (let rIdx = 0; rIdx < Math.min(15, rawGrid.length); rIdx++) {
+          const row = rawGrid[rIdx];
+          if (!Array.isArray(row)) continue;
+          let score = 0;
+          row.forEach((cell) => {
+            const cellNorm = String(cell ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (headerKeywords.some((k) => cellNorm.includes(k.replace(/[^a-z0-9]/g, '')))) {
+              score += 2;
+            }
+          });
+          if (score > maxHeaderScore) {
+            maxHeaderScore = score;
+            headerRowIdx = rIdx;
           }
-          if (bestVal.length > 5) qText = bestVal;
         }
 
-        // Clean numeric prefixes like "Q1. ", "1. "
-        qText = qText.replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').trim();
-        if (!qText || qText.length < 3) continue;
+        // Build header keys from the detected header row
+        const rawHeaderRow = rawGrid[headerRowIdx] || [];
+        const colKeys: string[] = [];
+        const seenKeys = new Set<string>();
 
-        // Extract options
-        let optA = optAKey ? stripOptPrefix(String(row[optAKey] || '').trim()) : '';
-        let optB = optBKey ? stripOptPrefix(String(row[optBKey] || '').trim()) : '';
-        let optC = optCKey ? stripOptPrefix(String(row[optCKey] || '').trim()) : '';
-        let optD = optDKey ? stripOptPrefix(String(row[optDKey] || '').trim()) : '';
+        rawHeaderRow.forEach((h: any, cIdx: number) => {
+          let k = String(h ?? '').trim();
+          if (!k) k = `col_${cIdx}`;
+          let uniqueKey = k;
+          let counter = 1;
+          while (seenKeys.has(uniqueKey.toLowerCase())) {
+            uniqueKey = `${k}_${counter++}`;
+          }
+          seenKeys.add(uniqueKey.toLowerCase());
+          colKeys.push(uniqueKey);
+        });
 
-        // Ensure 4 valid options
-        const rawOpts = [optA, optB, optC, optD].filter(Boolean);
-        while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
-        const cleanOpts = rawOpts.slice(0, 4);
+        // Convert data rows into objects
+        const sheetObjRows: Record<string, any>[] = [];
+        for (let rIdx = headerRowIdx + 1; rIdx < rawGrid.length; rIdx++) {
+          const row = rawGrid[rIdx];
+          if (!Array.isArray(row) || !row.some((c) => String(c ?? '').trim() !== '')) continue;
+          const rowObj: Record<string, any> = {};
+          colKeys.forEach((key, cIdx) => {
+            rowObj[key] = row[cIdx] !== undefined ? String(row[cIdx]).trim() : '';
+          });
+          sheetObjRows.push(rowObj);
+        }
 
-        // Answer detection
-        const rawAns = ansKey ? String(row[ansKey] || '').trim() : '';
-        let correctIndex = 0;
-        if (rawAns) {
-          const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\s]+/, '').replace(/[\)\.\,\s]+$/, '').trim();
-          if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1') correctIndex = 0;
-          else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2') correctIndex = 1;
-          else if (cleanAns === 'C' || cleanAns === '3' || cleanAns === 'OPTION C' || cleanAns === 'OPTION 3') correctIndex = 2;
-          else if (cleanAns === 'D' || cleanAns === '4' || cleanAns === 'OPTION D' || cleanAns === 'OPTION 4') correctIndex = 3;
-          else {
-            const foundIdx = cleanOpts.findIndex((o) => o.toLowerCase().trim() === rawAns.toLowerCase().trim());
-            if (foundIdx !== -1) correctIndex = foundIdx;
-            else {
-              const partialIdx = cleanOpts.findIndex((o) =>
-                o.toLowerCase().includes(rawAns.toLowerCase().trim()) ||
-                rawAns.toLowerCase().trim().includes(o.toLowerCase())
-              );
-              if (partialIdx !== -1) correctIndex = partialIdx;
+        if (sheetObjRows.length === 0) continue;
+
+        // Key finder helper for this sheet
+        const findKey = (patterns: string[], exclude?: RegExp): string | null => {
+          for (const key of colKeys) {
+            const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (exclude && exclude.test(norm)) continue;
+            for (const p of patterns) {
+              const pNorm = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (norm === pNorm || norm.includes(pNorm)) return key;
             }
           }
+          return null;
+        };
+
+        const subjKey = findKey(['subject', 'subj', 'category', 'stream', 'course']);
+        const topicKey = findKey(['topic', 'chapter', 'module', 'unit', 'section', 'lesson']);
+
+        let qKey = findKey(['questiontext', 'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext'],
+          /^(questionno|questionnumber|questiontype|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight)$/i);
+
+        if (qKey) {
+          const norm = qKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (norm.includes('no') || norm.includes('num') || norm.includes('id') || norm.includes('type') || norm.includes('serial') || norm.includes('sr')) {
+            qKey = null;
+          }
         }
 
-        // Extract metadata
-        const exp = expKey ? String(row[expKey] || '').trim() : '';
-        const detExp = detExpKey ? String(row[detExpKey] || '').trim() : '';
-        const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey ? String(row[subjKey] || '').trim() : '') || (subjKey ? String(row[subjKey] || '').trim() : '') || 'General';
-        let rowTopic = selectedTopic || (topicKey ? String(row[topicKey] || '').trim() : '');
-        if (!rowTopic && qText && subjKey && row[subjKey] && row[subjKey] !== rowSubject) {
-          rowTopic = String(row[subjKey] || '').trim();
-        }
-        if (!rowTopic) rowTopic = 'General Module';
+        const optAKey = findKey(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1']) ||
+          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'a') || null;
+        const optBKey = findKey(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2']) ||
+          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'b') || null;
+        const optCKey = findKey(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3']) ||
+          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'c') || null;
+        const optDKey = findKey(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4']) ||
+          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'd') || null;
+        const ansKey = findKey(['answer', 'correct', 'ans', 'key', 'correctoption', 'correctanswer', 'rightanswer', 'anskey']);
+        const expKey = findKey(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl']);
+        const detExpKey = findKey(['detailedexplanation', 'detailed', 'stepbystep', 'workedout', 'detailedsol']);
+        const marksKey = findKey(['marks', 'points', 'score', 'weight']);
 
-        // Strip subject prefix from topic if present
-        if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
-          rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+        // Auto-detect question key if not found by name
+        if (!qKey) {
+          const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
+          let bestKey: string | null = null;
+          let bestScore = 0;
+          for (const key of colKeys) {
+            if (usedKeys.has(key)) continue;
+            const samples = sheetObjRows.slice(0, 30).map((r) => String(r[key] || '').trim()).filter(Boolean);
+            const diversity = new Set(samples).size;
+            const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
+            const score = diversity * avgLen;
+            if (score > bestScore && avgLen > 8) {
+              bestScore = score;
+              bestKey = key;
+            }
+          }
+          if (bestKey) qKey = bestKey;
         }
 
-        parsedList.push({
-          course_id: selectedCourseId,
-          subject: rowSubject,
-          topic: rowTopic,
-          topic_tag: `${rowSubject} - ${rowTopic}`,
-          question_text: qText,
-          options: cleanOpts,
-          correct_option: correctIndex,
-          explanation: exp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`,
-          detailed_explanation: detExp || '',
-        });
+        let sheetParsedCount = 0;
+
+        for (const row of sheetObjRows) {
+          let qText = qKey ? String(row[qKey] || '').trim() : '';
+
+          if (!qText) {
+            const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
+            let bestVal = '';
+            for (const key of colKeys) {
+              if (usedKeys.has(key)) continue;
+              const val = String(row[key] || '').trim();
+              if (val.length > bestVal.length) bestVal = val;
+            }
+            if (bestVal.length > 5) qText = bestVal;
+          }
+
+          qText = qText.replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').trim();
+          if (!qText || qText.length < 2) continue;
+
+          let optA = optAKey ? stripOptPrefix(String(row[optAKey] || '').trim()) : '';
+          let optB = optBKey ? stripOptPrefix(String(row[optBKey] || '').trim()) : '';
+          let optC = optCKey ? stripOptPrefix(String(row[optCKey] || '').trim()) : '';
+          let optD = optDKey ? stripOptPrefix(String(row[optDKey] || '').trim()) : '';
+
+          const rawOpts = [optA, optB, optC, optD].filter(Boolean);
+          while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
+          const cleanOpts = rawOpts.slice(0, 4);
+
+          const rawAns = ansKey ? String(row[ansKey] || '').trim() : '';
+          let correctIndex = 0;
+          if (rawAns) {
+            const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\[\s]+/, '').replace(/[\)\]\.\,\s]+$/, '').trim();
+            if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1' || cleanAns === 'OPT A' || cleanAns === 'OPT 1') correctIndex = 0;
+            else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2' || cleanAns === 'OPT B' || cleanAns === 'OPT 2') correctIndex = 1;
+            else if (cleanAns === 'C' || cleanAns === '3' || cleanAns === 'OPTION C' || cleanAns === 'OPTION 3' || cleanAns === 'OPT C' || cleanAns === 'OPT 3') correctIndex = 2;
+            else if (cleanAns === 'D' || cleanAns === '4' || cleanAns === 'OPTION D' || cleanAns === 'OPTION 4' || cleanAns === 'OPT D' || cleanAns === 'OPT 4') correctIndex = 3;
+            else {
+              const foundIdx = cleanOpts.findIndex((o) => o.toLowerCase().trim() === rawAns.toLowerCase().trim());
+              if (foundIdx !== -1) correctIndex = foundIdx;
+              else {
+                const partialIdx = cleanOpts.findIndex((o) =>
+                  o.toLowerCase().includes(rawAns.toLowerCase().trim()) ||
+                  rawAns.toLowerCase().trim().includes(o.toLowerCase())
+                );
+                if (partialIdx !== -1) correctIndex = partialIdx;
+              }
+            }
+          }
+
+          const exp = expKey ? String(row[expKey] || '').trim() : '';
+          const detExp = detExpKey ? String(row[detExpKey] || '').trim() : '';
+
+          // Fallback to sheet name if no subject column exists
+          const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
+          const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey ? String(row[subjKey] || '').trim() : '') || (subjKey ? String(row[subjKey] || '').trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
+
+          let rowTopic = selectedTopic || (topicKey ? String(row[topicKey] || '').trim() : '');
+          if (!rowTopic && qText && subjKey && row[subjKey] && row[subjKey] !== rowSubject) {
+            rowTopic = String(row[subjKey] || '').trim();
+          }
+          if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
+            rowTopic = sheetName;
+          }
+          if (!rowTopic) rowTopic = 'General Module';
+
+          if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
+            rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+          }
+
+          allParsedQuestions.push({
+            course_id: selectedCourseId,
+            subject: rowSubject,
+            topic: rowTopic,
+            topic_tag: `${rowSubject} - ${rowTopic}`,
+            question_text: qText,
+            options: cleanOpts,
+            correct_option: correctIndex,
+            explanation: exp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`,
+            detailed_explanation: detExp || '',
+          });
+          sheetParsedCount++;
+        }
+
+        if (sheetParsedCount > 0) {
+          sheetStats.push(`${sheetName} (${sheetParsedCount})`);
+        }
       }
 
-      console.log(`[ExcelParser] Final result: ${parsedList.length} questions. Unique: ${new Set(parsedList.map((q) => q.question_text)).size}`);
+      console.log(`[ExcelParser] Multi-sheet parsing finished. Total questions: ${allParsedQuestions.length}. Sheets:`, sheetStats);
 
-      if (parsedList.length === 0) {
+      if (allParsedQuestions.length === 0) {
         setExcelError('No valid questions could be extracted from the file. Please check column headers (Question, Option A, Option B, Option C, Option D, Answer).');
         setParsedExcelQuestions([]);
       } else {
-        setParsedExcelQuestions(parsedList);
+        setParsedExcelQuestions(allParsedQuestions);
       }
     } catch (err: any) {
       setExcelError(err.message || 'Failed to parse Excel/CSV file');
@@ -878,12 +909,6 @@ export default function QuestionManagementPage() {
     try {
       let questionsToSubmit: any[] = [];
 
-      const targetTopicTag = selectedSubject
-        ? selectedTopic
-          ? `${selectedSubject} - ${selectedTopic}`
-          : `${selectedSubject} - General Module`
-        : 'General Module';
-
       const resolveQSubject = (q: any) => {
         if (selectedSubject) return selectedSubject;
         const raw = (q.subject && q.subject.trim()) || (q.topic_tag && q.topic_tag.includes('-') ? q.topic_tag.split('-')[0].trim() : '');
@@ -954,28 +979,33 @@ export default function QuestionManagementPage() {
         }));
       }
 
-      const res = await fetch('/api/questions/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: questionsToSubmit }),
-      });
+      // Chunked upload helper for large question batches (e.g. 1800 questions)
+      const CHUNK_SIZE = 250;
+      for (let i = 0; i < questionsToSubmit.length; i += CHUNK_SIZE) {
+        const batch = questionsToSubmit.slice(i, i + CHUNK_SIZE);
+        const res = await fetch('/api/questions/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questions: batch }),
+        });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setBulkError(data.error || 'Failed to bulk upload questions');
-      } else {
-        setShowBulkModal(false);
-        setExcelFileName('');
-        setParsedExcelQuestions([]);
-        setExcelError('');
-        setBulkText('');
-
-        if (typeof window !== 'undefined') {
-          (window as any).__ADMIN_QUESTIONS_CACHE__ = null;
-          (window as any).__ADMIN_DASHBOARD_CACHE__ = null;
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `Failed to bulk upload batch (items ${i + 1} to ${Math.min(i + CHUNK_SIZE, questionsToSubmit.length)})`);
         }
-        fetchData();
       }
+
+      setShowBulkModal(false);
+      setExcelFileName('');
+      setParsedExcelQuestions([]);
+      setExcelError('');
+      setBulkText('');
+
+      if (typeof window !== 'undefined') {
+        (window as any).__ADMIN_QUESTIONS_CACHE__ = null;
+        (window as any).__ADMIN_DASHBOARD_CACHE__ = null;
+      }
+      fetchData();
     } catch (err: any) {
       setBulkError(err.message || 'An error occurred during bulk upload');
     } finally {
