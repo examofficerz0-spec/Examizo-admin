@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
-import { executeD1 } from '@/lib/d1';
+import { queryD1, executeD1 } from '@/lib/d1';
 
 const isMalformedQuestion = (qText: any, options?: any[]): boolean => {
   if (!qText || typeof qText !== 'string') return true;
@@ -9,6 +9,15 @@ const isMalformedQuestion = (qText: any, options?: any[]): boolean => {
   if (cleaned.length < 1) return true;
   if (/^(?:subject|topic|chapter)\s*[\:\-]/i.test(cleaned)) return true;
   return false;
+};
+
+const normalizeQuestionText = (text: string): string => {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/^(?:q(?:uestion)?[\s\.\:\-]*\d*[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 export async function POST(req: Request) {
@@ -98,13 +107,60 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid questions found in bulk upload batch.' }, { status: 400 });
     }
 
+    // Load existing question fingerprints to prevent duplicates
+    const existingFingerprints = new Set<string>();
+
+    try {
+      const d1Existing = await queryD1('SELECT course_id, question_text FROM questions WHERE is_active = 1');
+      if (Array.isArray(d1Existing)) {
+        d1Existing.forEach((q: any) => {
+          const fp = `${String(q.course_id)}:::${normalizeQuestionText(q.question_text)}`;
+          existingFingerprints.add(fp);
+        });
+      }
+    } catch (d1QueryErr) {}
+
+    const db = readSharedDb();
+    if (Array.isArray(db.questions)) {
+      db.questions.forEach((q) => {
+        if (q.is_active !== false) {
+          const cId = typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.name : q.course_id;
+          const fp = `${String(cId)}:::${normalizeQuestionText(q.question_text)}`;
+          existingFingerprints.add(fp);
+        }
+      });
+    }
+
+    // Deduplicate within the batch AND against existing question bank
+    const deduplicatedQuestions: any[] = [];
+    let skippedDuplicatesCount = 0;
+
+    for (const q of preparedQuestions) {
+      const fp = `${String(q.course_id)}:::${normalizeQuestionText(q.question_text)}`;
+      if (existingFingerprints.has(fp)) {
+        skippedDuplicatesCount++;
+        continue;
+      }
+      existingFingerprints.add(fp);
+      deduplicatedQuestions.push(q);
+    }
+
+    if (deduplicatedQuestions.length === 0) {
+      return NextResponse.json({
+        success: true,
+        count: 0,
+        skippedDuplicates: skippedDuplicatesCount,
+        message: `All ${skippedDuplicatesCount} question(s) already exist in the Question Bank (duplicate questions skipped).`,
+      });
+    }
+
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       let d1InsertedCount = 0;
       const CHUNK_SIZE = 25; // Safe variable limit for SQLite multi-row INSERT
 
-      for (let i = 0; i < preparedQuestions.length; i += CHUNK_SIZE) {
-        const chunk = preparedQuestions.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < deduplicatedQuestions.length; i += CHUNK_SIZE) {
+        const chunk = deduplicatedQuestions.slice(i, i + CHUNK_SIZE);
         const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').join(', ');
         const params: any[] = [];
 
@@ -159,20 +215,19 @@ export async function POST(req: Request) {
         try {
           await executeD1(
             'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'BULK_ADD_QUESTIONS', `batch_${d1InsertedCount}`, `Bulk uploaded ${d1InsertedCount} questions into Cloudflare D1 question bank`]
+            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'BULK_ADD_QUESTIONS', `batch_${d1InsertedCount}`, `Bulk uploaded ${d1InsertedCount} questions into Cloudflare D1 question bank (${skippedDuplicatesCount} duplicates skipped)`]
           );
         } catch (auditErr) {}
 
-        return NextResponse.json({ success: true, count: d1InsertedCount, questions: preparedQuestions });
+        return NextResponse.json({ success: true, count: d1InsertedCount, skippedDuplicates: skippedDuplicatesCount, questions: deduplicatedQuestions });
       }
     } catch (e) {
       console.warn('[Bulk Questions D1 Warning]:', e);
     }
 
     // 2. Resilient JSON Store Fallback (Local environment)
-    const db = readSharedDb();
     if (!db.questions) db.questions = [];
-    preparedQuestions.forEach((q) => db.questions.unshift(q));
+    deduplicatedQuestions.forEach((q) => db.questions.unshift(q));
 
     if (!db.auditLogs) db.auditLogs = [];
     db.auditLogs.unshift({
@@ -180,13 +235,13 @@ export async function POST(req: Request) {
       admin_id: admin?.adminId || 'admin_master_1',
       admin_name: admin?.name || 'Admin',
       action_type: 'BULK_ADD_QUESTIONS',
-      affected_entity_id: `batch_${preparedQuestions.length}`,
-      details: `Bulk uploaded ${preparedQuestions.length} questions into question bank`,
+      affected_entity_id: `batch_${deduplicatedQuestions.length}`,
+      details: `Bulk uploaded ${deduplicatedQuestions.length} questions into question bank (${skippedDuplicatesCount} duplicates skipped)`,
       timestamp: new Date().toISOString(),
     });
 
     writeSharedDb(db);
-    return NextResponse.json({ success: true, count: preparedQuestions.length, questions: preparedQuestions });
+    return NextResponse.json({ success: true, count: deduplicatedQuestions.length, skippedDuplicates: skippedDuplicatesCount, questions: deduplicatedQuestions });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

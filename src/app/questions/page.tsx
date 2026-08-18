@@ -763,13 +763,28 @@ export default function QuestionManagementPage() {
         }
       }
 
-      console.log(`[ExcelParser] Multi-sheet parsing finished. Total questions: ${allParsedQuestions.length}. Sheets:`, sheetStats);
+      // Deduplicate questions from Excel file
+      const seenFingerprints = new Set<string>();
+      const uniqueParsedQuestions: any[] = [];
+      let excelDupsCount = 0;
 
-      if (allParsedQuestions.length === 0) {
+      for (const q of allParsedQuestions) {
+        const norm = `${q.subject || ''}:::${q.question_text.toLowerCase().replace(/^(?:q(?:uestion)?[\s\.\:\-]*\d*[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()}`;
+        if (seenFingerprints.has(norm)) {
+          excelDupsCount++;
+          continue;
+        }
+        seenFingerprints.add(norm);
+        uniqueParsedQuestions.push(q);
+      }
+
+      console.log(`[ExcelParser] Multi-sheet parsing finished. Total questions: ${uniqueParsedQuestions.length} (Duplicates removed: ${excelDupsCount}). Sheets:`, sheetStats);
+
+      if (uniqueParsedQuestions.length === 0) {
         setExcelError('No valid questions could be extracted from the file. Please check column headers (Question, Option A, Option B, Option C, Option D, Answer).');
         setParsedExcelQuestions([]);
       } else {
-        setParsedExcelQuestions(allParsedQuestions);
+        setParsedExcelQuestions(uniqueParsedQuestions);
       }
     } catch (err: any) {
       setExcelError(err.message || 'Failed to parse Excel/CSV file');
@@ -981,6 +996,9 @@ export default function QuestionManagementPage() {
 
       // Chunked upload helper for large question batches (e.g. 1800 questions)
       const CHUNK_SIZE = 250;
+      let totalInserted = 0;
+      let totalSkipped = 0;
+
       for (let i = 0; i < questionsToSubmit.length; i += CHUNK_SIZE) {
         const batch = questionsToSubmit.slice(i, i + CHUNK_SIZE);
         const res = await fetch('/api/questions/bulk', {
@@ -989,10 +1007,13 @@ export default function QuestionManagementPage() {
           body: JSON.stringify({ questions: batch }),
         });
 
+        const data = await res.json();
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || `Failed to bulk upload batch (items ${i + 1} to ${Math.min(i + CHUNK_SIZE, questionsToSubmit.length)})`);
         }
+
+        totalInserted += (data.count || 0);
+        totalSkipped += (data.skippedDuplicates || 0);
       }
 
       setShowBulkModal(false);
