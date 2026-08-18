@@ -107,15 +107,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid questions found in bulk upload batch.' }, { status: 400 });
     }
 
-    // Load existing question fingerprints to prevent duplicates
+    const computeFp = (q: any): string => {
+      const cId = String(q.course_id || '').trim().toLowerCase();
+      const tag = String(q.topic_tag || '').trim().toLowerCase();
+      const sub = String(q.subject || (tag.includes('-') ? tag.split('-')[0].trim() : '')).trim().toLowerCase();
+      const top = String(q.topic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag)).trim().toLowerCase();
+      const text = normalizeQuestionText(q.question_text || '');
+      const opts = Array.isArray(q.options)
+        ? q.options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
+        : '';
+      return `${cId}:::${sub}:::${top}:::${text}:::${opts}`;
+    };
+
+    // Load existing question fingerprints scoped strictly to Course + Subject + Topic + Options
     const existingFingerprints = new Set<string>();
 
     try {
-      const d1Existing = await queryD1('SELECT course_id, question_text FROM questions WHERE is_active = 1');
+      const d1Existing = await queryD1('SELECT course_id, subject, topic_tag, question_text, options_json FROM questions WHERE is_active = 1');
       if (Array.isArray(d1Existing)) {
         d1Existing.forEach((q: any) => {
-          const fp = `${String(q.course_id)}:::${normalizeQuestionText(q.question_text)}`;
-          existingFingerprints.add(fp);
+          let opts: any[] = [];
+          try { opts = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : (q.options_json || []); } catch (e) {}
+          existingFingerprints.add(computeFp({ ...q, options: opts }));
         });
       }
     } catch (d1QueryErr) {}
@@ -125,8 +138,7 @@ export async function POST(req: Request) {
       db.questions.forEach((q) => {
         if (q.is_active !== false) {
           const cId = typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.name : q.course_id;
-          const fp = `${String(cId)}:::${normalizeQuestionText(q.question_text)}`;
-          existingFingerprints.add(fp);
+          existingFingerprints.add(computeFp({ ...q, course_id: cId }));
         }
       });
     }
@@ -136,7 +148,7 @@ export async function POST(req: Request) {
     let skippedDuplicatesCount = 0;
 
     for (const q of preparedQuestions) {
-      const fp = `${String(q.course_id)}:::${normalizeQuestionText(q.question_text)}`;
+      const fp = computeFp(q);
       if (existingFingerprints.has(fp)) {
         skippedDuplicatesCount++;
         continue;

@@ -672,11 +672,11 @@ export default function QuestionManagementPage() {
           let bestScore = 0;
           for (const key of colKeys) {
             if (usedKeys.has(key)) continue;
-            const samples = sheetObjRows.slice(0, 30).map((r) => String(r[key] || '').trim()).filter(Boolean);
+            const samples = sheetObjRows.slice(0, 30).map((r) => (r[key] !== undefined && r[key] !== null ? String(r[key]).trim() : '')).filter(Boolean);
             const diversity = new Set(samples).size;
             const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
             const score = diversity * avgLen;
-            if (score > bestScore && avgLen > 8) {
+            if (score > bestScore && avgLen >= 2) {
               bestScore = score;
               bestKey = key;
             }
@@ -687,34 +687,34 @@ export default function QuestionManagementPage() {
         let sheetParsedCount = 0;
 
         for (const row of sheetObjRows) {
-          let qText = qKey ? String(row[qKey] || '').trim() : '';
+          let qText = qKey && row[qKey] !== undefined && row[qKey] !== null ? String(row[qKey]).trim() : '';
 
           if (!qText) {
             const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
             let bestVal = '';
             for (const key of colKeys) {
               if (usedKeys.has(key)) continue;
-              const val = String(row[key] || '').trim();
+              const val = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
               if (val.length > bestVal.length) bestVal = val;
             }
-            if (bestVal.length > 5) qText = bestVal;
+            if (bestVal.length >= 2) qText = bestVal;
           }
 
           qText = qText.replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').trim();
-          if (!qText || qText.length < 2) continue;
+          if (!qText || qText.length < 1) continue;
 
-          let optA = optAKey ? stripOptPrefix(String(row[optAKey] || '').trim()) : '';
-          let optB = optBKey ? stripOptPrefix(String(row[optBKey] || '').trim()) : '';
-          let optC = optCKey ? stripOptPrefix(String(row[optCKey] || '').trim()) : '';
-          let optD = optDKey ? stripOptPrefix(String(row[optDKey] || '').trim()) : '';
+          let optA = optAKey && row[optAKey] !== undefined && row[optAKey] !== null ? stripOptPrefix(String(row[optAKey]).trim()) : '';
+          let optB = optBKey && row[optBKey] !== undefined && row[optBKey] !== null ? stripOptPrefix(String(row[optBKey]).trim()) : '';
+          let optC = optCKey && row[optCKey] !== undefined && row[optCKey] !== null ? stripOptPrefix(String(row[optCKey]).trim()) : '';
+          let optD = optDKey && row[optDKey] !== undefined && row[optDKey] !== null ? stripOptPrefix(String(row[optDKey]).trim()) : '';
 
-          const rawOpts = [optA, optB, optC, optD].filter(Boolean);
+          const rawOpts = [optA, optB, optC, optD].filter((o) => o !== '');
           while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
           const cleanOpts = rawOpts.slice(0, 4);
 
-          const rawAns = ansKey ? String(row[ansKey] || '').trim() : '';
+          const rawAns = ansKey && row[ansKey] !== undefined && row[ansKey] !== null ? String(row[ansKey]).trim() : '';
           let correctIndex = 0;
-          if (rawAns) {
+          if (rawAns !== '') {
             const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\[\s]+/, '').replace(/[\)\]\.\,\s]+$/, '').trim();
             if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1' || cleanAns === 'OPT A' || cleanAns === 'OPT 1') correctIndex = 0;
             else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2' || cleanAns === 'OPT B' || cleanAns === 'OPT 2') correctIndex = 1;
@@ -733,16 +733,16 @@ export default function QuestionManagementPage() {
             }
           }
 
-          const exp = expKey ? String(row[expKey] || '').trim() : '';
-          const detExp = detExpKey ? String(row[detExpKey] || '').trim() : '';
+          const exp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
+          const detExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
 
           // Fallback to sheet name if no subject column exists
           const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
-          const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey ? String(row[subjKey] || '').trim() : '') || (subjKey ? String(row[subjKey] || '').trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
+          const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
 
-          let rowTopic = selectedTopic || (topicKey ? String(row[topicKey] || '').trim() : '');
+          let rowTopic = selectedTopic || (topicKey && row[topicKey] !== undefined ? String(row[topicKey]).trim() : '');
           if (!rowTopic && qText && subjKey && row[subjKey] && row[subjKey] !== rowSubject) {
-            rowTopic = String(row[subjKey] || '').trim();
+            rowTopic = String(row[subjKey]).trim();
           }
           if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
             rowTopic = sheetName;
@@ -772,13 +772,26 @@ export default function QuestionManagementPage() {
         }
       }
 
-      // Deduplicate questions from Excel file
+      // Deduplicate questions from Excel file strictly within Same Course + Same Subject + Same Topic + Question Text + Options
       const seenFingerprints = new Set<string>();
       const uniqueParsedQuestions: any[] = [];
       let excelDupsCount = 0;
 
       for (const q of allParsedQuestions) {
-        const norm = `${q.subject || ''}:::${q.question_text.toLowerCase().replace(/^(?:q(?:uestion)?[\s\.\:\-]*\d*[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()}`;
+        const cId = String(q.course_id || selectedCourseId || '').trim().toLowerCase();
+        const sub = String(q.subject || selectedSubject || '').trim().toLowerCase();
+        const top = String(q.topic || selectedTopic || '').trim().toLowerCase();
+        const text = String(q.question_text || '')
+          .toLowerCase()
+          .replace(/^(?:q(?:uestion)?[\s\.\:\-]*\d*[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '')
+          .replace(/[^\w\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const optsKey = Array.isArray(q.options)
+          ? q.options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
+          : '';
+
+        const norm = `${cId}:::${sub}:::${top}:::${text}:::${optsKey}`;
         if (seenFingerprints.has(norm)) {
           excelDupsCount++;
           continue;
