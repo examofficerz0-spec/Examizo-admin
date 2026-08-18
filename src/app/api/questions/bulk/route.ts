@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       let d1InsertedCount = 0;
-      const CHUNK_SIZE = 25; // Safe variable limit for SQLite multi-row INSERT
+      const CHUNK_SIZE = 50; // Optimized multi-row INSERT batch size (50 * 11 = 550 params, well within SQLite limits)
 
       for (let i = 0; i < deduplicatedQuestions.length; i += CHUNK_SIZE) {
         const chunk = deduplicatedQuestions.slice(i, i + CHUNK_SIZE);

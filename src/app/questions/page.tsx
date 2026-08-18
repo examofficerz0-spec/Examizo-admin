@@ -24,6 +24,7 @@ import {
   Layers,
   ArrowLeft,
   Search,
+  Loader2,
 } from 'lucide-react';
 
 const getInitialQuestionsCache = () => {
@@ -83,6 +84,14 @@ export default function QuestionManagementPage() {
     { topic_tag: '', question_text: '', options: ['', '', '', ''], correct_option: 0, explanation: '' },
   ]);
   const [bulkError, setBulkError] = useState('');
+  const [bulkUploadProgress, setBulkUploadProgress] = useState<{
+    currentBatch: number;
+    totalBatches: number;
+    processedCount: number;
+    totalCount: number;
+    percent: number;
+    message: string;
+  } | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
@@ -998,8 +1007,22 @@ export default function QuestionManagementPage() {
       const CHUNK_SIZE = 250;
       let totalInserted = 0;
       let totalSkipped = 0;
+      const totalBatches = Math.ceil(questionsToSubmit.length / CHUNK_SIZE);
 
       for (let i = 0; i < questionsToSubmit.length; i += CHUNK_SIZE) {
+        const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
+        const currentProcessed = Math.min(i + CHUNK_SIZE, questionsToSubmit.length);
+        const percent = Math.round((currentProcessed / questionsToSubmit.length) * 100);
+
+        setBulkUploadProgress({
+          currentBatch: batchNum,
+          totalBatches,
+          processedCount: currentProcessed,
+          totalCount: questionsToSubmit.length,
+          percent,
+          message: `Uploading batch ${batchNum} of ${totalBatches} (${currentProcessed} of ${questionsToSubmit.length} questions)...`,
+        });
+
         const batch = questionsToSubmit.slice(i, i + CHUNK_SIZE);
         const res = await fetch('/api/questions/bulk', {
           method: 'POST',
@@ -1016,6 +1039,7 @@ export default function QuestionManagementPage() {
         totalSkipped += (data.skippedDuplicates || 0);
       }
 
+      setBulkUploadProgress(null);
       setShowBulkModal(false);
       setExcelFileName('');
       setParsedExcelQuestions([]);
@@ -1030,6 +1054,7 @@ export default function QuestionManagementPage() {
     } catch (err: any) {
       setBulkError(err.message || 'An error occurred during bulk upload');
     } finally {
+      setBulkUploadProgress(null);
       setSubmitting(false);
     }
   };
@@ -2020,20 +2045,50 @@ export default function QuestionManagementPage() {
                 </div>
               )}
 
+              {/* Real-time Dynamic Upload Progress Bar */}
+              {bulkUploadProgress && (
+                <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-blue-950 dark:text-blue-200">
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                      {bulkUploadProgress.message}
+                    </span>
+                    <span className="font-extrabold">{bulkUploadProgress.percent}%</span>
+                  </div>
+                  <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${bulkUploadProgress.percent}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-300">
+                    Deduplicating against existing Question Bank and writing into database. Please keep this modal open.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => setShowBulkModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg disabled:opacity-50 shadow-xs"
+                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg disabled:opacity-50 shadow-xs flex items-center gap-2"
                 >
-                  {submitting ? 'Uploading...' : 'Upload Question Batch'}
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{bulkUploadProgress ? `Uploading (${bulkUploadProgress.percent}%)...` : 'Uploading Questions...'}</span>
+                    </>
+                  ) : (
+                    'Upload Question Batch'
+                  )}
                 </button>
               </div>
             </form>
