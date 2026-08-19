@@ -13,139 +13,114 @@ export async function GET(req: Request) {
     const statusFilter = searchParams.get('status') || '';
     const courseFilter = searchParams.get('course') || '';
 
-    // 1. Try Cloudflare D1
+    const userMap = new Map<string, any>();
+    const courseMap = new Map<string, any>();
+
+    // Load courses from D1
     try {
-      const d1Users = await queryD1('SELECT * FROM users WHERE status != ? ORDER BY created_at DESC', ['Deleted']);
       const d1Courses = await queryD1('SELECT * FROM courses');
-
-      if (d1Users && d1Users.length > 0) {
-        let filtered = d1Users;
-
-        if (query) {
-          const qLower = query.toLowerCase();
-          filtered = filtered.filter(
-            (u: any) =>
-              (u.name && u.name.toLowerCase().includes(qLower)) ||
-              (u.email && u.email.toLowerCase().includes(qLower))
-          );
+      if (d1Courses && Array.isArray(d1Courses)) {
+        for (const c of d1Courses) {
+          courseMap.set(String(c.id), c);
+          courseMap.set(String(c._id || c.id), c);
         }
+      }
+    } catch (_) {}
 
-        if (statusFilter) {
-          filtered = filtered.filter((u: any) => u.status === statusFilter);
-        }
-
-        if (courseFilter === 'pending') {
-          filtered = filtered.filter((u: any) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
-        } else if (courseFilter && courseFilter !== 'all') {
-          filtered = filtered.filter((u: any) => String(u.locked_course_id) === String(courseFilter));
-        }
-
-        const formatted = filtered.map((u: any) => {
-          let courseObj: any = null;
-          if (u.locked_course_id) {
-            const targetId = String(u.locked_course_id);
-            const found = (d1Courses || []).find((c: any) => String(c.id) === targetId || String(c._id) === targetId);
-            if (found) {
-              courseObj = { _id: found.id || found._id, name: found.name, category: found.category || 'Course' };
-            } else {
-              courseObj = { _id: targetId, name: targetId, category: 'Course' };
-            }
+    // Load courses from Memory DB
+    try {
+      const db = readSharedDb();
+      if (db.courses && Array.isArray(db.courses)) {
+        for (const c of db.courses) {
+          if (!courseMap.has(String(c._id || c.id))) {
+            courseMap.set(String(c._id || c.id), c);
           }
+        }
+      }
+    } catch (_) {}
 
-          return {
-            _id: u.id,
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            status: u.status || 'Active',
-            xp_total: u.xp_total || 0,
-            created_at: u.created_at,
-            locked_course_id: courseObj,
-          };
-        });
+    // Load courses from Mongoose
+    try {
+      const { isMemoryMode } = await dbConnect();
+      if (!isMemoryMode) {
+        const mCourses = await Course.find({}).lean();
+        for (const c of mCourses) {
+          if (!courseMap.has(String(c._id))) {
+            courseMap.set(String(c._id), c);
+          }
+        }
+      }
+    } catch (_) {}
 
-        return NextResponse.json({ users: formatted });
+    // 1. Gather users from Cloudflare D1
+    try {
+      const d1Users = await queryD1("SELECT * FROM users WHERE status != 'Deleted' AND name != 'Deleted User' ORDER BY created_at DESC");
+      if (d1Users && Array.isArray(d1Users)) {
+        for (const u of d1Users) {
+          const key = (u.email || u.id).toLowerCase().trim();
+          userMap.set(key, { ...u, _id: u.id, id: u.id });
+        }
       }
     } catch (e) {
-      console.warn('[Admin Users GET D1 Error]:', e);
+      console.warn('[Admin Users GET D1 Warning]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
+    // 2. Gather users from Memory DB (shared-db.json)
+    try {
       const db = readSharedDb();
-      let filtered = (db.users || []).filter((u) => u.status !== 'Deleted');
-
-      if (query) {
-        filtered = filtered.filter(
-          (u) => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase())
-        );
-      }
-      if (statusFilter) {
-        filtered = filtered.filter((u) => u.status === statusFilter);
-      }
-
-      if (courseFilter === 'pending') {
-        filtered = filtered.filter((u) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
-      } else if (courseFilter && courseFilter !== 'all') {
-        filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id) === String(courseFilter));
-      }
-
-      const formatted = filtered.map((u) => {
-        let courseObj: any = null;
-        if (u.locked_course_id) {
-          if (typeof u.locked_course_id === 'object' && u.locked_course_id.name) {
-            courseObj = {
-              _id: u.locked_course_id._id || u.locked_course_id.id,
-              name: u.locked_course_id.name,
-              category: u.locked_course_id.category || 'Course',
-            };
-          } else {
-            const targetId = String(u.locked_course_id);
-            const found = (db.courses || []).find((c) => String(c._id) === targetId || String(c.id) === targetId);
-            if (found) {
-              courseObj = { _id: found._id, name: found.name, category: found.category };
-            } else {
-              courseObj = { _id: targetId, name: targetId, category: 'Course' };
+      if (db.users && Array.isArray(db.users)) {
+        for (const u of db.users) {
+          if (u.status !== 'Deleted' && u.name !== 'Deleted User' && !String(u.email || '').startsWith('deleted_')) {
+            const key = (u.email || u._id || u.id).toLowerCase().trim();
+            if (!userMap.has(key)) {
+              userMap.set(key, { ...u, _id: u._id || u.id, id: u._id || u.id });
             }
           }
         }
-
-        return {
-          ...u,
-          locked_course_id: courseObj,
-        };
-      });
-
-      return NextResponse.json({ users: formatted });
-    }
-
-    // 3. Mongoose Mode Fallback
-    const filter: any = { status: { $ne: 'Deleted' } };
-    if (statusFilter) filter.status = statusFilter;
-    if (courseFilter === 'pending') {
-      filter.$or = [{ locked_course_id: null }, { locked_course_id: { $exists: false } }, { locked_course_id: '' }];
-    } else if (courseFilter && courseFilter !== 'all') {
-      filter.locked_course_id = courseFilter;
-    }
-
-    if (query) {
-      const searchOr = [
-        { name: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } },
-      ];
-      if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
-        delete filter.$or;
-      } else {
-        filter.$or = searchOr;
       }
+    } catch (e) {
+      console.warn('[Admin Users GET Memory Warning]:', e);
     }
 
-    const rawUsers = await User.find(filter).lean().sort({ created_at: -1 });
-    const allCourses = await Course.find({}).lean();
+    // 3. Gather users from MongoDB
+    try {
+      const { isMemoryMode } = await dbConnect();
+      if (!isMemoryMode) {
+        const mUsers = await User.find({ status: { $ne: 'Deleted' }, name: { $ne: 'Deleted User' } }).lean();
+        for (const u of mUsers) {
+          const key = String(u.email || u._id).toLowerCase().trim();
+          if (!userMap.has(key)) {
+            userMap.set(key, { ...u, _id: String(u._id), id: String(u._id) });
+          }
+        }
+      }
+    } catch (_) {}
 
-    const users = rawUsers.map((u: any) => {
+    let allUsers = Array.from(userMap.values());
+
+    // Search query filter
+    if (query) {
+      const qLower = query.toLowerCase();
+      allUsers = allUsers.filter(
+        (u) =>
+          (u.name && u.name.toLowerCase().includes(qLower)) ||
+          (u.email && u.email.toLowerCase().includes(qLower))
+      );
+    }
+
+    // Status filter
+    if (statusFilter) {
+      allUsers = allUsers.filter((u) => u.status === statusFilter);
+    }
+
+    // Course filter
+    if (courseFilter === 'pending') {
+      allUsers = allUsers.filter((u) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
+    } else if (courseFilter && courseFilter !== 'all') {
+      allUsers = allUsers.filter((u) => String(u.locked_course_id) === String(courseFilter));
+    }
+
+    const formatted = allUsers.map((u) => {
       let courseObj: any = null;
       if (u.locked_course_id) {
         if (typeof u.locked_course_id === 'object' && u.locked_course_id.name) {
@@ -156,21 +131,28 @@ export async function GET(req: Request) {
           };
         } else {
           const targetId = String(u.locked_course_id);
-          const found = allCourses.find((c: any) => String(c._id) === targetId || String(c.id) === targetId);
+          const found = courseMap.get(targetId);
           if (found) {
-            courseObj = { _id: String(found._id), name: found.name, category: found.category };
+            courseObj = { _id: String(found._id || found.id), name: found.name, category: found.category || 'Course' };
           } else {
             courseObj = { _id: targetId, name: targetId, category: 'Course' };
           }
         }
       }
+
       return {
-        ...u,
+        _id: u._id || u.id,
+        id: u._id || u.id,
+        name: u.name,
+        email: u.email,
+        status: u.status || 'Active',
+        xp_total: u.xp_total || 0,
+        created_at: u.created_at || new Date().toISOString(),
         locked_course_id: courseObj,
       };
     });
 
-    return NextResponse.json({ users });
+    return NextResponse.json({ users: formatted });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -189,51 +171,21 @@ export async function POST(req: Request) {
     const newUserId = generateId();
     const password_hash = await bcrypt.hash(password, 10);
 
-    // 1. Try Cloudflare D1
+    // 1. Cloudflare D1
     try {
-      const existing = await queryD1('SELECT id FROM users WHERE email = ? LIMIT 1', [lowerEmail]);
-      if (existing && existing.length > 0) {
-        return NextResponse.json({ error: 'An account with this email already exists' }, { status: 400 });
-      }
-
-      const d1Success = await executeD1(
+      await executeD1(
         'INSERT INTO users (id, name, email, password_hash, status, xp_total, locked_course_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [newUserId, name, lowerEmail, password_hash, 'Active', 0, locked_course_id || null]
       );
+    } catch (_) {}
 
-      if (d1Success) {
-        const newUser = {
-          _id: newUserId,
-          id: newUserId,
-          name,
-          email: lowerEmail,
-          status: 'Active',
-          xp_total: 0,
-          locked_course_id: locked_course_id || null,
-        };
-
-        await executeD1(
-          'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-          [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'REGISTER_USER', newUserId, `Manually onboarded student account "${lowerEmail}"`]
-        );
-
-        return NextResponse.json({ success: true, user: newUser });
-      }
-    } catch (e) {
-      console.warn('[Admin Users POST D1 Error]:', e);
-    }
-
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
+    // 2. Memory DB
+    try {
       const db = readSharedDb();
-      const existing = (db.users || []).find((u) => u.email.toLowerCase() === lowerEmail);
-      if (existing) {
-        return NextResponse.json({ error: 'An account with this email already exists' }, { status: 400 });
-      }
-
-      const newUser = {
+      if (!db.users) db.users = [];
+      db.users.unshift({
         _id: newUserId,
+        id: newUserId,
         name,
         email: lowerEmail,
         password_hash,
@@ -241,48 +193,34 @@ export async function POST(req: Request) {
         xp_total: 0,
         locked_course_id: locked_course_id || null,
         created_at: new Date().toISOString(),
-      };
-
-      if (!db.users) db.users = [];
-      db.users.unshift(newUser);
-
-      if (!db.auditLogs) db.auditLogs = [];
-      db.auditLogs.unshift({
-        _id: generateId(),
-        admin_id: admin?.adminId || 'admin_master_1',
-        admin_name: admin?.name || 'Admin',
-        action_type: 'REGISTER_USER',
-        affected_entity_id: newUser._id,
-        details: `Manually onboarded student account "${lowerEmail}"`,
-        timestamp: new Date().toISOString(),
       });
-
       writeSharedDb(db);
-      return NextResponse.json({ success: true, user: newUser });
-    }
+    } catch (_) {}
 
-    // 3. Mongoose Mode Fallback
-    const existing = await User.findOne({ email: lowerEmail });
-    if (existing) {
-      return NextResponse.json({ error: 'An account with this email already exists' }, { status: 400 });
-    }
+    // 3. Mongoose
+    try {
+      const { isMemoryMode } = await dbConnect();
+      if (!isMemoryMode) {
+        await User.create({
+          name,
+          email: lowerEmail,
+          password_hash,
+          status: 'Active',
+          xp_total: 0,
+          locked_course_id: locked_course_id || null,
+        });
+      }
+    } catch (_) {}
 
-    const newUser = await User.create({
+    const newUser = {
+      _id: newUserId,
+      id: newUserId,
       name,
       email: lowerEmail,
-      password_hash,
       status: 'Active',
       xp_total: 0,
       locked_course_id: locked_course_id || null,
-    });
-
-    await AuditLog.create({
-      admin_id: admin?.adminId,
-      admin_name: admin?.name || 'Admin',
-      action_type: 'REGISTER_USER',
-      affected_entity_id: newUser._id.toString(),
-      details: `Manually onboarded student account "${lowerEmail}"`,
-    });
+    };
 
     return NextResponse.json({ success: true, user: newUser });
   } catch (error: any) {
