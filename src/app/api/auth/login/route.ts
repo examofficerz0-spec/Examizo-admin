@@ -14,11 +14,14 @@ export async function POST(req: Request) {
 
     const lowerInput = email.toLowerCase().trim();
 
-    // Explicit master admin shortcut ("admin" / "admin")
-    if ((lowerInput === 'admin' || lowerInput === 'admin@exammaster.com') && (password === 'admin' || password === 'Admin@123456')) {
+    // Explicit master admin shortcut ("admin" / "admin" / "admin@examizo.com")
+    if (
+      (lowerInput === 'admin' || lowerInput === 'admin@exammaster.com' || lowerInput === 'admin@examizo.com') &&
+      (password === 'admin' || password === 'Admin@123456')
+    ) {
       const token = signAdminToken({
         adminId: 'admin_master_1',
-        email: 'admin@exammaster.com',
+        email: 'admin@examizo.com',
         name: 'Master Controller',
         role: 'Super Admin',
         permissions: ['all'],
