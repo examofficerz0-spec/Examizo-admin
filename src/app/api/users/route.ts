@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { User, Course, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1 } from '@/lib/d1';
@@ -39,19 +37,6 @@ export async function GET(req: Request) {
       }
     } catch (_) {}
 
-    // Load courses from Mongoose
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        const mCourses = await Course.find({}).lean();
-        for (const c of mCourses) {
-          if (!courseMap.has(String(c._id))) {
-            courseMap.set(String(c._id), c);
-          }
-        }
-      }
-    } catch (_) {}
-
     // 1. Gather users from Cloudflare D1
     try {
       const d1Users = await queryD1("SELECT * FROM users WHERE status != 'Deleted' AND name != 'Deleted User' ORDER BY created_at DESC");
@@ -81,20 +66,6 @@ export async function GET(req: Request) {
     } catch (e) {
       console.warn('[Admin Users GET Memory Warning]:', e);
     }
-
-    // 3. Gather users from MongoDB
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        const mUsers = await User.find({ status: { $ne: 'Deleted' }, name: { $ne: 'Deleted User' } }).lean();
-        for (const u of mUsers) {
-          const key = String(u.email || u._id).toLowerCase().trim();
-          if (!userMap.has(key)) {
-            userMap.set(key, { ...u, _id: String(u._id), id: String(u._id) });
-          }
-        }
-      }
-    } catch (_) {}
 
     let allUsers = Array.from(userMap.values());
 
@@ -195,21 +166,6 @@ export async function POST(req: Request) {
         created_at: new Date().toISOString(),
       });
       writeSharedDb(db);
-    } catch (_) {}
-
-    // 3. Mongoose
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        await User.create({
-          name,
-          email: lowerEmail,
-          password_hash,
-          status: 'Active',
-          xp_total: 0,
-          locked_course_id: locked_course_id || null,
-        });
-      }
     } catch (_) {}
 
     const newUser = {

@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { User, AuditLog, Attempt } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1 } from '@/lib/d1';
@@ -13,87 +11,56 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const userId = params.id;
 
     if (action === 'assign_course') {
-      // 1. Try Cloudflare D1
+      // 1. Cloudflare D1
       try {
         await executeD1('UPDATE users SET locked_course_id = ? WHERE id = ?', [locked_course_id || null, userId]);
       } catch (_) {}
 
       // 2. Memory Mode Fallback
-      const { isMemoryMode } = await dbConnect();
-      if (isMemoryMode) {
-        const db = readSharedDb();
-        const u = (db.users || []).find((user) => String(user._id) === String(userId) || String(user.id) === String(userId));
-        if (u) {
-          u.locked_course_id = locked_course_id || null;
-        }
-        if (!db.auditLogs) db.auditLogs = [];
-        db.auditLogs.unshift({
-          _id: generateId(),
-          admin_id: admin?.adminId || 'admin_master_1',
-          admin_name: admin?.name || 'Admin',
-          action_type: 'ASSIGN_COURSE',
-          affected_entity_id: userId,
-          details: `Assigned course ID ${locked_course_id || 'null'} to student ID ${userId}`,
-          timestamp: new Date().toISOString(),
-        });
-        writeSharedDb(db);
-        return NextResponse.json({ success: true, user: u });
-      }
-
-      // 3. Mongoose Mode Fallback
-      const updated = await User.findByIdAndUpdate(userId, { locked_course_id: locked_course_id || null }, { new: true });
-      await AuditLog.create({
-        admin_id: admin?.adminId,
-        admin_name: admin?.name || 'Admin',
-        action_type: 'ASSIGN_COURSE',
-        affected_entity_id: userId,
-        details: `Assigned course ID ${locked_course_id || 'null'} to student ID ${userId}`,
-      });
-
-      return NextResponse.json({ success: true, user: updated });
-    }
-
-    const newStatus = action === 'suspend' ? 'Suspended' : 'Active';
-
-    // 1. Try Cloudflare D1
-    try {
-      await executeD1('UPDATE users SET status = ? WHERE id = ?', [newStatus, userId]);
-    } catch (_) {}
-
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
       const db = readSharedDb();
       const u = (db.users || []).find((user) => String(user._id) === String(userId) || String(user.id) === String(userId));
       if (u) {
-        u.status = newStatus;
+        u.locked_course_id = locked_course_id || null;
       }
       if (!db.auditLogs) db.auditLogs = [];
       db.auditLogs.unshift({
         _id: generateId(),
         admin_id: admin?.adminId || 'admin_master_1',
         admin_name: admin?.name || 'Admin',
-        action_type: action === 'suspend' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
+        action_type: 'ASSIGN_COURSE',
         affected_entity_id: userId,
-        details: `${action === 'suspend' ? 'Suspended' : 'Reinstated'} student user account ID ${userId}`,
+        details: `Assigned course ID ${locked_course_id || 'null'} to student ID ${userId}`,
         timestamp: new Date().toISOString(),
       });
       writeSharedDb(db);
       return NextResponse.json({ success: true, user: u });
     }
 
-    // 3. Mongoose Mode Fallback
-    const updated = await User.findByIdAndUpdate(userId, { status: newStatus }, { new: true });
+    const newStatus = action === 'suspend' ? 'Suspended' : 'Active';
 
-    await AuditLog.create({
-      admin_id: admin?.adminId,
+    // 1. Cloudflare D1
+    try {
+      await executeD1('UPDATE users SET status = ? WHERE id = ?', [newStatus, userId]);
+    } catch (_) {}
+
+    // 2. Memory Mode Fallback
+    const db = readSharedDb();
+    const u = (db.users || []).find((user) => String(user._id) === String(userId) || String(user.id) === String(userId));
+    if (u) {
+      u.status = newStatus;
+    }
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift({
+      _id: generateId(),
+      admin_id: admin?.adminId || 'admin_master_1',
       admin_name: admin?.name || 'Admin',
       action_type: action === 'suspend' ? 'SUSPEND_USER' : 'ACTIVATE_USER',
       affected_entity_id: userId,
       details: `${action === 'suspend' ? 'Suspended' : 'Reinstated'} student user account ID ${userId}`,
+      timestamp: new Date().toISOString(),
     });
-
-    return NextResponse.json({ success: true, user: updated });
+    writeSharedDb(db);
+    return NextResponse.json({ success: true, user: u });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -106,8 +73,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     let targetEmail = '';
     let baseHandle = '';
 
-    // Step 1: Find user details across all stores
-    // Try Memory DB first
+    // Step 1: Find user details
     try {
       const db = readSharedDb();
       const memTarget = (db.users || []).find(
@@ -118,23 +84,11 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
       }
     } catch (_) {}
 
-    // Try D1
     if (!targetEmail) {
       try {
         const d1Users = await queryD1('SELECT id, email, account_email FROM users WHERE id = ? OR email = ? LIMIT 1', [userId, userId]);
         if (d1Users && d1Users.length > 0) {
           targetEmail = (d1Users[0].account_email || d1Users[0].email || '').toLowerCase().trim();
-        }
-      } catch (_) {}
-    }
-
-    // Try Mongoose
-    if (!targetEmail) {
-      try {
-        await dbConnect();
-        const mUser = await User.findById(userId);
-        if (mUser?.email) {
-          targetEmail = mUser.email.toLowerCase().trim();
         }
       } catch (_) {}
     }
@@ -227,44 +181,9 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
       console.warn('[Admin DELETE User Memory purge warning]:', memErr);
     }
 
-    // Step 4: Purge from Mongoose / MongoDB
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        await User.deleteMany({
-          $or: [
-            { _id: userId },
-            { email: targetEmail },
-            { email: { $regex: `^${baseHandle}(@|\\+)`, $options: 'i' } },
-            { account_email: { $regex: `^${baseHandle}(@|\\+)`, $options: 'i' } },
-          ],
-        });
-
-        try {
-          await Attempt.deleteMany({
-            $or: [
-              { student_id: userId },
-              { student_id: targetEmail },
-              { student_id: { $regex: `^${baseHandle}(@|\\+)`, $options: 'i' } },
-            ],
-          });
-        } catch (_) {}
-
-        await AuditLog.create({
-          admin_id: admin?.adminId || 'admin_master_1',
-          admin_name: admin?.name || 'Admin',
-          action_type: 'DELETE_USER',
-          affected_entity_id: userId,
-          details: `Permanently deleted student account "${targetEmail}" and purged all associated data`,
-        });
-      }
-    } catch (mongoErr) {
-      console.warn('[Admin DELETE User MongoDB purge warning]:', mongoErr);
-    }
-
     return NextResponse.json({
       success: true,
-      message: `Account "${targetEmail}" and all sub-profiles, XP, and attempts permanently deleted from all databases.`,
+      message: `Account "${targetEmail}" and all sub-profiles, XP, and attempts permanently deleted.`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
