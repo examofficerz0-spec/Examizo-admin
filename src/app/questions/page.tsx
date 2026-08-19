@@ -36,6 +36,26 @@ const getInitialQuestionsCache = () => {
   return null;
 };
 
+const cleanQuestionText = (text: any): string => {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.trim();
+
+  // 1. Remove trailing prefixes/suffixes like (Set 2, item 18), [Set 1, item 5], (Item 12), (Set 2), [Set A, Question 4]
+  cleaned = cleaned
+    .replace(/\s*[\(\[\{]\s*set\s*[\w\d]+(?:\s*[,;:\-_]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+)?\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+(?:\s*[,;:\-_]\s*set\s*[\w\d]+)?\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*set\s*[\w\d]+\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*(?:item|iteam)\s*[\w\d]+\s*[\)\]\}]\s*$/gi, '');
+
+  // 2. Remove leading prefixes like (Set 2, item 18), [Set 1, item 5], Q1., Question 1:, etc.
+  cleaned = cleaned
+    .replace(/^[\(\[\{]\s*set\s*[\w\d]+(?:\s*[,;:\-_]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+)?\s*[\)\]\}]\s*[:\.\-_]?\s*/gi, '')
+    .replace(/^[\(\[\{]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+(?:\s*[,;:\-_]\s*set\s*[\w\d]+)?\s*[\)\]\}]\s*[:\.\-_]?\s*/gi, '')
+    .replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/gi, '');
+
+  return cleaned.trim();
+};
+
 export default function QuestionManagementPage() {
   const initialCache = getInitialQuestionsCache();
   const router = useRouter();
@@ -514,7 +534,7 @@ export default function QuestionManagementPage() {
           subject: finalSubject,
           topic_tag: computedTag,
           question_type: questionType,
-          question_text: questionText,
+          question_text: cleanQuestionText(questionText),
           image_url: imageUrl,
           options: questionType === 'MCQ' ? options : [],
           correct_option: questionType === 'MCQ' ? correctOption : 0,
@@ -750,7 +770,7 @@ export default function QuestionManagementPage() {
             if (bestVal.length >= 2) qText = bestVal;
           }
 
-          qText = qText.replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '').trim();
+          qText = cleanQuestionText(qText);
           if (!qText || qText.length < 1) continue;
 
           let optA = optAKey && row[optAKey] !== undefined && row[optAKey] !== null ? stripOptPrefix(String(row[optAKey]).trim()) : '';
@@ -1021,7 +1041,7 @@ export default function QuestionManagementPage() {
         parsed.push({
           course_id: targetCourse,
           topic_tag,
-          question_text: qText,
+          question_text: cleanQuestionText(qText),
           options: opts.slice(0, 4),
           correct_option: correct,
           explanation: exp,

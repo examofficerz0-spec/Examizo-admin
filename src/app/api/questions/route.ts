@@ -72,12 +72,33 @@ export async function GET() {
   }
 }
 
+const cleanQuestionText = (text: any): string => {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text.trim();
+
+  // 1. Remove trailing prefixes/suffixes like (Set 2, item 18), [Set 1, item 5], (Item 12), (Set 2), [Set A, Question 4]
+  cleaned = cleaned
+    .replace(/\s*[\(\[\{]\s*set\s*[\w\d]+(?:\s*[,;:\-_]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+)?\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+(?:\s*[,;:\-_]\s*set\s*[\w\d]+)?\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*set\s*[\w\d]+\s*[\)\]\}]\s*$/gi, '')
+    .replace(/\s*[\(\[\{]\s*(?:item|iteam)\s*[\w\d]+\s*[\)\]\}]\s*$/gi, '');
+
+  // 2. Remove leading prefixes like (Set 2, item 18), [Set 1, item 5], Q1., Question 1:, etc.
+  cleaned = cleaned
+    .replace(/^[\(\[\{]\s*set\s*[\w\d]+(?:\s*[,;:\-_]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+)?\s*[\)\]\}]\s*[:\.\-_]?\s*/gi, '')
+    .replace(/^[\(\[\{]\s*(?:item|iteam|q|ques|question|no|sr|s\.no)\s*[\w\d]+(?:\s*[,;:\-_]\s*set\s*[\w\d]+)?\s*[\)\]\}]\s*[:\.\-_]?\s*/gi, '')
+    .replace(/^(?:q(?:uestion)?\s*\d+[\s\.\:\-]+|\d+[\s\.\:\-]+)/gi, '');
+
+  return cleaned.trim();
+};
+
 export async function POST(req: Request) {
   try {
     const admin = getAuthenticatedAdmin();
     const body = await req.json();
-    const { course_id, subject, topic_tag, question_type, question_text, options, correct_option, sample_answer, marks, explanation, detailed_explanation, image_url } = body;
+    const { course_id, subject, topic_tag, question_type, question_text: rawQuestionText, options, correct_option, sample_answer, marks, explanation, detailed_explanation, image_url } = body;
 
+    const question_text = cleanQuestionText(rawQuestionText);
     const qType = question_type === 'Short Answer' || question_type === 'Long Answer' ? question_type : 'MCQ';
 
     // Normalize course_id string
