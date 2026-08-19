@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       const d1Users = await queryD1('SELECT * FROM users WHERE status != ? ORDER BY created_at DESC', ['Deleted']);
       const d1Courses = await queryD1('SELECT * FROM courses');
 
-      if (d1Users) {
+      if (d1Users && d1Users.length > 0) {
         let filtered = d1Users;
 
         if (query) {
@@ -34,11 +34,9 @@ export async function GET(req: Request) {
           filtered = filtered.filter((u: any) => u.status === statusFilter);
         }
 
-        if (!courseFilter) {
-          filtered = filtered.filter((u: any) => u.locked_course_id && String(u.locked_course_id).trim() !== '');
-        } else if (courseFilter === 'pending') {
+        if (courseFilter === 'pending') {
           filtered = filtered.filter((u: any) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
-        } else {
+        } else if (courseFilter && courseFilter !== 'all') {
           filtered = filtered.filter((u: any) => String(u.locked_course_id) === String(courseFilter));
         }
 
@@ -46,7 +44,7 @@ export async function GET(req: Request) {
           let courseObj: any = null;
           if (u.locked_course_id) {
             const targetId = String(u.locked_course_id);
-            const found = d1Courses.find((c: any) => String(c.id) === targetId || String(c._id) === targetId);
+            const found = (d1Courses || []).find((c: any) => String(c.id) === targetId || String(c._id) === targetId);
             if (found) {
               courseObj = { _id: found.id || found._id, name: found.name, category: found.category || 'Course' };
             } else {
@@ -87,11 +85,9 @@ export async function GET(req: Request) {
         filtered = filtered.filter((u) => u.status === statusFilter);
       }
 
-      if (!courseFilter) {
-        filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id).trim() !== '');
-      } else if (courseFilter === 'pending') {
+      if (courseFilter === 'pending') {
         filtered = filtered.filter((u) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
-      } else {
+      } else if (courseFilter && courseFilter !== 'all') {
         filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id) === String(courseFilter));
       }
 
@@ -127,11 +123,9 @@ export async function GET(req: Request) {
     // 3. Mongoose Mode Fallback
     const filter: any = { status: { $ne: 'Deleted' } };
     if (statusFilter) filter.status = statusFilter;
-    if (!courseFilter) {
-      filter.locked_course_id = { $nin: [null, ''] };
-    } else if (courseFilter === 'pending') {
+    if (courseFilter === 'pending') {
       filter.$or = [{ locked_course_id: null }, { locked_course_id: { $exists: false } }, { locked_course_id: '' }];
-    } else {
+    } else if (courseFilter && courseFilter !== 'all') {
       filter.locked_course_id = courseFilter;
     }
 
