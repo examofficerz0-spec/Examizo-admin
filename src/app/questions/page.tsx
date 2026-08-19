@@ -839,36 +839,61 @@ export default function QuestionManagementPage() {
       };
 
       // 1. Build fingerprint set of ALL existing questions in database for deduplication
+      // ONLY include questions from the SAME COURSE to avoid cross-course false positives
       const existingDbFingerprints = new Set<string>();
+      const currentCourseIdNorm = String(selectedCourseId || '').trim().toLowerCase();
       (questions || []).forEach((eq: any) => {
-        if (eq.is_active !== false) {
-          existingDbFingerprints.add(computeQFp(eq));
-        }
+        if (eq.is_active === false) return;
+        // Only fingerprint questions from the same course
+        const eqCourseRaw = typeof eq.course_id === 'object' ? (eq.course_id?._id || eq.course_id?.id || '') : String(eq.course_id || '');
+        const eqCourseNorm = String(eqCourseRaw).trim().toLowerCase();
+        if (eqCourseNorm !== currentCourseIdNorm) return;
+        existingDbFingerprints.add(computeQFp(eq));
       });
 
+      console.log(`[ExcelDedup] Existing DB fingerprints for course "${currentCourseIdNorm}": ${existingDbFingerprints.size}`);
+
       // 2. Deduplicate questions from Excel file against file duplicates AND database duplicates
-      const seenInFile = new Set<string>();
+      const seenInFile = new Map<string, { idx: number; q: any }>(); // fp -> first occurrence
       const uniqueParsedQuestions: any[] = [];
       let fileDups = 0;
       let dbDups = 0;
 
-      for (const q of allParsedQuestions) {
+      for (let qi = 0; qi < allParsedQuestions.length; qi++) {
+        const q = allParsedQuestions[qi];
         const fp = computeQFp(q);
 
-        if (seenInFile.has(fp)) {
+        const firstSeen = seenInFile.get(fp);
+        if (firstSeen) {
           fileDups++;
+          // Log the first 10 in-file duplicate pairs so we can diagnose
+          if (fileDups <= 10) {
+            console.warn(`[ExcelDedup] IN-FILE DUP #${fileDups}:`, {
+              duplicateRow: qi + 1,
+              duplicateText: q.question_text?.substring(0, 80),
+              duplicateTopic: q.topic_tag,
+              firstSeenRow: firstSeen.idx + 1,
+              firstSeenText: firstSeen.q.question_text?.substring(0, 80),
+              firstSeenTopic: firstSeen.q.topic_tag,
+              fingerprint: fp.substring(0, 120),
+            });
+          }
           continue;
         }
-        seenInFile.add(fp);
+        seenInFile.set(fp, { idx: qi, q });
 
         if (existingDbFingerprints.has(fp)) {
           dbDups++;
+          if (dbDups <= 5) {
+            console.warn(`[ExcelDedup] DB DUP #${dbDups}: Row ${qi + 1} "${q.question_text?.substring(0, 60)}" already in DB`);
+          }
           continue;
         }
 
         uniqueParsedQuestions.push(q);
       }
 
+      console.log(`[ExcelDedup] Total parsed: ${allParsedQuestions.length}, Unique: ${uniqueParsedQuestions.length}, File dups: ${fileDups}, DB dups: ${dbDups}, Sheets:`, sheetStats);
       setExcelTotalParsed(allParsedQuestions.length);
       setExcelDupsInFileCount(fileDups);
       setExcelDupsInDbCount(dbDups);
