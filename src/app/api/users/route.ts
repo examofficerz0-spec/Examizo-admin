@@ -34,12 +34,12 @@ export async function GET(req: Request) {
           filtered = filtered.filter((u: any) => u.status === statusFilter);
         }
 
-        if (courseFilter) {
-          if (courseFilter === 'pending') {
-            filtered = filtered.filter((u: any) => !u.locked_course_id);
-          } else {
-            filtered = filtered.filter((u: any) => String(u.locked_course_id) === String(courseFilter));
-          }
+        if (!courseFilter) {
+          filtered = filtered.filter((u: any) => u.locked_course_id && String(u.locked_course_id).trim() !== '');
+        } else if (courseFilter === 'pending') {
+          filtered = filtered.filter((u: any) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
+        } else {
+          filtered = filtered.filter((u: any) => String(u.locked_course_id) === String(courseFilter));
         }
 
         const formatted = filtered.map((u: any) => {
@@ -87,12 +87,12 @@ export async function GET(req: Request) {
         filtered = filtered.filter((u) => u.status === statusFilter);
       }
 
-      if (courseFilter) {
-        if (courseFilter === 'pending') {
-          filtered = filtered.filter((u) => !u.locked_course_id);
-        } else {
-          filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id) === String(courseFilter));
-        }
+      if (!courseFilter) {
+        filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id).trim() !== '');
+      } else if (courseFilter === 'pending') {
+        filtered = filtered.filter((u) => !u.locked_course_id || String(u.locked_course_id).trim() === '');
+      } else {
+        filtered = filtered.filter((u) => u.locked_course_id && String(u.locked_course_id) === String(courseFilter));
       }
 
       const formatted = filtered.map((u) => {
@@ -127,12 +127,12 @@ export async function GET(req: Request) {
     // 3. Mongoose Mode Fallback
     const filter: any = { status: { $ne: 'Deleted' } };
     if (statusFilter) filter.status = statusFilter;
-    if (courseFilter) {
-      if (courseFilter === 'pending') {
-        filter.$or = [{ locked_course_id: null }, { locked_course_id: { $exists: false } }];
-      } else {
-        filter.locked_course_id = courseFilter;
-      }
+    if (!courseFilter) {
+      filter.locked_course_id = { $nin: [null, ''] };
+    } else if (courseFilter === 'pending') {
+      filter.$or = [{ locked_course_id: null }, { locked_course_id: { $exists: false } }, { locked_course_id: '' }];
+    } else {
+      filter.locked_course_id = courseFilter;
     }
 
     if (query) {
