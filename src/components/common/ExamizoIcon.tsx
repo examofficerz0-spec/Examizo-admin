@@ -101,33 +101,41 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             }
           }
 
-          @keyframes ezTasselPhysicsAdmin {
+          /* Continuous Infinite Loop for the Tassel in Admin Portal */
+          @keyframes ezTasselContinuousLoopAdmin {
             0% {
               transform: rotate(0deg);
             }
-            62% {
-              transform: rotate(-30deg);
+            20% {
+              transform: rotate(-24deg);
             }
-            75% {
-              transform: rotate(24deg);
+            40% {
+              transform: rotate(20deg);
             }
-            88% {
-              transform: rotate(-12deg);
+            60% {
+              transform: rotate(-16deg);
             }
-            95% {
-              transform: rotate(6deg);
+            80% {
+              transform: rotate(10deg);
             }
             100% {
               transform: rotate(0deg);
             }
           }
 
-          @keyframes ezTasselIdleSwayAdmin {
+          /* Continuous Secondary Wave for the Tassel Brush Tip */
+          @keyframes ezTasselBrushContinuousAdmin {
             0%, 100% {
-              transform: rotate(0deg);
+              transform: rotate(0deg) skewX(0deg);
+            }
+            25% {
+              transform: rotate(-14deg) skewX(-8deg);
             }
             50% {
-              transform: rotate(8deg);
+              transform: rotate(12deg) skewX(6deg);
+            }
+            75% {
+              transform: rotate(-6deg) skewX(-3deg);
             }
           }
 
@@ -151,9 +159,14 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             animation: ezHatLandingAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
           }
 
-          .ez-tassel-admin {
-            transform-origin: 74px 74px;
-            animation: ezTasselPhysicsAdmin 1.6s cubic-bezier(0.25, 1, 0.5, 1) forwards, ezTasselIdleSwayAdmin 3.5s ease-in-out 1.6s infinite;
+          .ez-tassel-loop-admin {
+            transform-origin: 64px 72px;
+            animation: ezTasselContinuousLoopAdmin 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+          }
+
+          .ez-tassel-brush-loop-admin {
+            transform-origin: 62px 90px;
+            animation: ezTasselBrushContinuousAdmin 2.2s ease-in-out infinite;
           }
 
           .ez-e-admin {
@@ -165,12 +178,6 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
           .group:hover .ez-hat-admin,
           .examizo-container:hover .ez-hat-admin {
             animation: ezHatLandingAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-          }
-
-          .group\\/icon:hover .ez-tassel-admin,
-          .group:hover .ez-tassel-admin,
-          .examizo-container:hover .ez-tassel-admin {
-            animation: ezTasselPhysicsAdmin 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
           }
 
           .group\\/icon:hover .ez-e-admin,
@@ -237,9 +244,9 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
           {/* Center Mortarboard Button */}
           <ellipse cx="112" cy="54" rx="5" ry="3.5" fill="#071126" />
 
-          {/* Tassel Assembly */}
-          <g className={animate ? 'ez-tassel-admin' : ''}>
-            {/* Tassel Cord hanging to left */}
+          {/* Tassel Assembly (Continuous Infinite Swaying Loop) */}
+          <g className={animate ? 'ez-tassel-loop-admin' : ''}>
+            {/* Tassel Cord hanging from hat to left */}
             <path
               d="M 112 54 Q 80 58 64 72 L 62 90"
               fill="none"
@@ -248,12 +255,14 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
               strokeLinecap="round"
             />
 
-            {/* Tassel Ring & Brush */}
-            <circle cx="62" cy="90" r="4" fill="#071126" />
-            <path
-              d="M 59 92 L 65 92 L 68 112 C 68 114 56 114 56 112 Z"
-              fill="url(#ezTasselGradAdmin)"
-            />
+            {/* Tassel Ring & Brush Tip with fluid secondary flex */}
+            <g className={animate ? 'ez-tassel-brush-loop-admin' : ''}>
+              <circle cx="62" cy="90" r="4" fill="#071126" />
+              <path
+                d="M 59 92 L 65 92 L 68 112 C 68 114 56 114 56 112 Z"
+                fill="url(#ezTasselGradAdmin)"
+              />
+            </g>
           </g>
         </g>
       </svg>
