@@ -69,16 +69,16 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     const admin = getAuthenticatedAdmin();
-    const rawId = decodeURIComponent(params.id);
+    const rawId = decodeURIComponent(params.id).trim();
     let targetEmail = '';
     let targetId = rawId;
 
     // 1. Resolve user email and ID from D1
     try {
-      const d1Users = await queryD1('SELECT id, email, account_email FROM users WHERE id = ? OR LOWER(email) = ? LIMIT 1', [rawId, rawId.toLowerCase()]);
+      const d1Users = await queryD1('SELECT id, email FROM users WHERE id = ? OR LOWER(email) = ? LIMIT 1', [rawId, rawId.toLowerCase()]);
       if (d1Users && d1Users.length > 0) {
         targetId = d1Users[0].id;
-        targetEmail = (d1Users[0].account_email || d1Users[0].email || '').toLowerCase().trim();
+        targetEmail = (d1Users[0].email || '').toLowerCase().trim();
       }
     } catch (_) {}
 
@@ -91,7 +91,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         );
         if (memTarget) {
           targetId = String(memTarget._id || memTarget.id || rawId);
-          targetEmail = (memTarget.account_email || memTarget.email || '').toLowerCase().trim();
+          targetEmail = (memTarget.email || '').toLowerCase().trim();
         }
       } catch (_) {}
     }
@@ -102,33 +102,34 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
     const baseHandle = targetEmail ? targetEmail.split('@')[0].split('+')[0].trim() : '';
 
-    // Step A: Purge from Cloudflare D1
+    // Step A: Purge from Cloudflare D1 using exact verified columns
     try {
       if (targetEmail) {
+        const subPattern = `${baseHandle}+%`;
         await executeD1(
-          "DELETE FROM users WHERE id = ? OR LOWER(email) = ? OR LOWER(email) LIKE ? OR LOWER(account_email) = ? OR LOWER(account_email) LIKE ?",
-          [targetId, targetEmail, `${baseHandle}+%`, targetEmail, `${baseHandle}+%`]
+          "DELETE FROM attempts WHERE student_id = ? OR student_id IN (SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(email) LIKE ?)",
+          [targetId, targetEmail, subPattern]
         );
 
         await executeD1(
-          "DELETE FROM attempts WHERE student_id = ? OR LOWER(student_id) = ? OR LOWER(student_id) LIKE ?",
-          [targetId, targetEmail, `${baseHandle}+%`]
+          "DELETE FROM xp_transactions WHERE student_id = ? OR student_id IN (SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(email) LIKE ?)",
+          [targetId, targetEmail, subPattern]
         );
 
         await executeD1(
-          "DELETE FROM xp_transactions WHERE student_id = ? OR user_id = ? OR LOWER(student_id) = ? OR LOWER(user_id) = ? OR LOWER(student_id) LIKE ? OR LOWER(user_id) LIKE ?",
-          [targetId, targetId, targetEmail, targetEmail, `${baseHandle}+%`, `${baseHandle}+%`]
+          "DELETE FROM notifications WHERE target_user_id = ? OR target_user_id IN (SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(email) LIKE ?)",
+          [targetId, targetEmail, subPattern]
         );
 
         await executeD1(
-          "DELETE FROM notifications WHERE user_id = ? OR LOWER(user_id) = ? OR LOWER(user_id) LIKE ?",
-          [targetId, targetEmail, `${baseHandle}+%`]
+          "DELETE FROM users WHERE id = ? OR LOWER(email) = ? OR LOWER(email) LIKE ?",
+          [targetId, targetEmail, subPattern]
         );
       } else {
-        await executeD1("DELETE FROM users WHERE id = ?", [targetId]);
         await executeD1("DELETE FROM attempts WHERE student_id = ?", [targetId]);
-        await executeD1("DELETE FROM xp_transactions WHERE student_id = ? OR user_id = ?", [targetId, targetId]);
-        await executeD1("DELETE FROM notifications WHERE user_id = ?", [targetId]);
+        await executeD1("DELETE FROM xp_transactions WHERE student_id = ?", [targetId]);
+        await executeD1("DELETE FROM notifications WHERE target_user_id = ?", [targetId]);
+        await executeD1("DELETE FROM users WHERE id = ?", [targetId]);
       }
 
       await executeD1("DELETE FROM users WHERE status = 'Deleted' OR name = 'Deleted User' OR email LIKE 'deleted_%'");
