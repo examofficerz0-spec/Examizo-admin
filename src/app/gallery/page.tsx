@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { 
   Plus, 
   Search, 
@@ -231,246 +233,256 @@ export default function AdminGalleryPage() {
   const categoriesList = Array.from(new Set(items.map((it) => it.category).filter(Boolean)));
 
   return (
-    <div className="p-6 sm:p-10 max-w-7xl mx-auto space-y-8 font-sans">
-      
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-8 rounded-3xl text-white shadow-xl">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
-            <ImageIcon className="w-3.5 h-3.5" />
-            <span>Public Media &amp; Showcase</span>
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+      <AdminSidebar />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <AdminHeader
+          title="Gallery Showcase Management"
+          subtitle="Add, curate, and organize high-resolution photos shown on the student portal"
+        />
+
+        <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto max-w-7xl mx-auto w-full">
+          {/* Header Banner */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Public Media &amp; Showcase</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Gallery Showcase Management</h1>
+              <p className="text-slate-300 text-xs sm:text-sm max-w-xl">
+                Add, curate, and organize high-resolution photos of proctored exam halls, classrooms, facilities, and student events shown on the student portal.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleOpenAdd}
+                className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50 hover:-translate-y-0.5 transition-all flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Photo</span>
+              </button>
+            </div>
           </div>
-          <h1 className="text-3xl font-black tracking-tight">Gallery Showcase Management</h1>
-          <p className="text-slate-300 text-sm max-w-xl">
-            Add, curate, and organize high-resolution photos of proctored exam halls, classrooms, facilities, and student events shown on the student portal.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleOpenAdd}
-            className="px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50 hover:-translate-y-0.5 transition-all flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add New Photo</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Total Photos</span>
-          <p className="text-2xl font-black text-slate-900 dark:text-white">{items.length}</p>
-        </div>
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Published Active Photos</span>
-          <p className="text-2xl font-black text-emerald-600">{activeCount}</p>
-        </div>
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Categories</span>
-          <p className="text-2xl font-black text-indigo-600">{categoriesList.length || 1}</p>
-        </div>
-      </div>
-
-      {/* Notification Toasts */}
-      {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 text-emerald-800 dark:text-emerald-300 text-sm font-bold flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            <span>{successMsg}</span>
+          {/* Metrics Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Total Photos</span>
+              <p className="text-2xl font-black text-slate-900 dark:text-white">{items.length}</p>
+            </div>
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Published Active Photos</span>
+              <p className="text-2xl font-black text-emerald-600">{activeCount}</p>
+            </div>
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-1">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Categories</span>
+              <p className="text-2xl font-black text-indigo-600">{categoriesList.length || 1}</p>
+            </div>
           </div>
-          <button onClick={() => setSuccessMsg('')} className="p-1 hover:bg-emerald-100 rounded-lg">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-none">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                selectedCategory === cat
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/25'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-800 hover:bg-slate-50'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+          {/* Notification Toasts */}
+          {successMsg && (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+              <button onClick={() => setSuccessMsg('')} className="p-1 hover:bg-emerald-100 rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
-        {/* Search Field */}
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search photos, title, or tags..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {/* Gallery Cards Grid */}
-      {loading ? (
-        <div className="text-center py-20 text-slate-400 font-bold text-sm animate-pulse">
-          Loading gallery items...
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 space-y-4">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50 dark:bg-slate-800 text-blue-600 flex items-center justify-center">
-            <ImageIcon className="w-7 h-7" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">No gallery photos found</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {searchTerm || selectedCategory !== 'All'
-                ? 'Try adjusting your search query or filter tags.'
-                : 'Click "Add New Photo" to publish your first media item.'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between group"
-            >
-              {/* Image Preview Container */}
-              <div className="relative aspect-video w-full bg-slate-950 overflow-hidden">
-                <img
-                  src={item.image_url}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  onError={(e: any) => {
-                    e.target.src = '/images/exam_hall_1.jpg';
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
-
-                {/* Category Badge */}
-                <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/15 text-[10px] font-extrabold text-white">
-                  {item.category}
-                </span>
-
-                {/* Status Toggle Button */}
+          {/* Filter and Search Bar */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Category Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-none">
+              {CATEGORIES.map((cat) => (
                 <button
-                  onClick={() => handleToggleStatus(item)}
-                  title={item.is_active ? 'Click to deactivate' : 'Click to activate'}
-                  className={`absolute top-3 right-3 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider backdrop-blur-md border transition-all ${
-                    item.is_active
-                      ? 'bg-emerald-500/80 border-emerald-300/40 text-white'
-                      : 'bg-rose-500/80 border-rose-300/40 text-white'
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedCategory === cat
+                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/25'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  {item.is_active ? 'Active' : 'Hidden'}
+                  {cat}
                 </button>
-              </div>
+              ))}
+            </div>
 
-              {/* Card Body */}
-              <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                <div className="space-y-1.5">
-                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white line-clamp-1">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                    {item.description || 'No description provided.'}
-                  </p>
-                </div>
+            {/* Search Input */}
+            <div className="relative w-full md:w-72">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search photos, title, or tags..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
 
-                {/* Footer Controls */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-400">
-                    Order: #{item.display_order}
-                  </span>
+          {/* Gallery Items Grid */}
+          {loading ? (
+            <div className="p-16 text-center text-slate-400 text-xs font-bold">
+              Loading gallery media...
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="p-16 text-center bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
+              <ImageIcon className="w-10 h-10 text-slate-400 mx-auto" />
+              <h3 className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">No photos found</h3>
+              <p className="text-xs text-slate-400">
+                {searchTerm || selectedCategory !== 'All'
+                  ? 'No photos matched your filter criteria.'
+                  : 'Start by uploading photos of your exam rooms, campus, or award ceremonies.'}
+              </p>
+              <button
+                onClick={handleOpenAdd}
+                className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl"
+              >
+                Add First Photo
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="group bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    {/* Thumbnail */}
+                    <div className="relative aspect-video w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e: any) => {
+                          e.target.src = '/images/exam_hall_1.jpg';
+                        }}
+                      />
+                      <div className="absolute top-3 left-3 flex gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-900/80 backdrop-blur-md text-white border border-white/10">
+                          {item.category}
+                        </span>
+                      </div>
+                      <div className="absolute top-3 right-3 flex gap-2">
+                        <button
+                          onClick={() => handleToggleStatus(item)}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider backdrop-blur-md ${
+                            item.is_active
+                              ? 'bg-emerald-500/90 text-white'
+                              : 'bg-slate-800/90 text-slate-300'
+                          }`}
+                        >
+                          {item.is_active ? 'Active' : 'Hidden'}
+                        </button>
+                      </div>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEdit(item)}
-                      className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 transition-colors"
-                      title="Edit photo"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.title)}
-                      className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 transition-colors"
-                      title="Delete photo"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Metadata */}
+                    <div className="p-4 pt-1 space-y-1.5">
+                      <h4 className="font-black text-slate-900 dark:text-white text-sm line-clamp-1">
+                        {item.title}
+                      </h4>
+                      {item.description && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="p-4 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-bold text-slate-400">
+                      Order: #{item.display_order}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEdit(item)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors"
+                        title="Edit Photo"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id, item.title)}
+                        className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors"
+                        title="Delete Photo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </main>
+      </div>
 
-      {/* Add / Edit Modal */}
+      {/* Upload/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 space-y-6 shadow-2xl">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="space-y-0.5">
-                <h3 className="text-xl font-black text-slate-900 dark:text-white">
-                  {editingItem ? 'Edit Gallery Photo' : 'Add New Gallery Photo'}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Upload an image file or provide an image link.
-                </p>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 dark:text-white text-base">
+                    {editingItem ? 'Edit Gallery Photo' : 'Add Showcase Photo'}
+                  </h3>
+                  <p className="text-xs text-slate-400">Manage showcase visuals for the student portal</p>
+                </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="p-3 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold">
+                {errorMsg}
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-4">
-              
-              {/* Photo Title */}
+            <form onSubmit={handleSave} className="space-y-4 text-xs">
+              {/* Title */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Photo Title *
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Photo Title <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Main Examination Hall - Session 2026"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g., National Examination Hall Simulation 2026"
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Category & Display Order */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Category *
-                  </label>
+                  <label className="font-bold text-slate-700 dark:text-slate-300">Category</label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
                   >
                     {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
                       <option key={cat} value={cat}>
@@ -479,74 +491,61 @@ export default function AdminGalleryPage() {
                     ))}
                   </select>
                 </div>
-
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Display Order
-                  </label>
+                  <label className="font-bold text-slate-700 dark:text-slate-300">Display Order</label>
                   <input
                     type="number"
                     value={formData.display_order}
-                    onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => setFormData({ ...formData, display_order: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
                   />
                 </div>
               </div>
 
               {/* Description */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Description
-                </label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Short Description</label>
                 <textarea
                   rows={2}
+                  placeholder="Optional brief description..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Short description or context about this photo..."
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
                 />
               </div>
 
-              {/* Image Input (File Upload or URL) */}
+              {/* Image Input Options */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Image Source *
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Image Source <span className="text-rose-500">*</span>
                 </label>
-
-                {/* File Uploader */}
-                <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-center hover:border-blue-500 transition-colors">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    id="photo_upload_input"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="photo_upload_input"
-                    className="cursor-pointer flex flex-col items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300"
-                  >
-                    <Upload className="w-6 h-6 text-blue-600" />
-                    <span>Upload Image File (PNG, JPG, WebP)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Max file size: 5MB</span>
-                  </label>
-                </div>
-
-                <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  — Or enter Image URL / Choose preset —
-                </div>
-
+                
+                {/* Direct Image URL input */}
                 <input
                   type="text"
-                  value={formData.image_url}
+                  placeholder="Paste direct Image URL (https://...)"
+                  value={formData.image_url.startsWith('data:') ? '[Uploaded File]' : formData.image_url}
                   onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  placeholder="https://... or /images/exam_hall_1.jpg"
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium"
                 />
 
-                {/* Preset Fast Picker */}
-                <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-1">
-                  <span className="text-[11px] font-bold text-slate-400 shrink-0">Presets:</span>
+                {/* Local Upload Button */}
+                <div className="flex items-center gap-2 pt-1">
+                  <label className="cursor-pointer px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-2 border border-slate-200 dark:border-slate-700 transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Local Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <span className="text-[11px] text-slate-400">or pick a sample:</span>
+                </div>
+
+                {/* Preset sample buttons */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
                   {DEFAULT_PRESET_IMAGES.map((preset, idx) => (
                     <button
                       key={preset}
