@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { User, Attempt, Course, MockTest, Question } from '@/lib/models';
 import { readSharedDb } from '@/lib/sharedDb';
 import { queryD1 } from '@/lib/d1';
 
@@ -14,7 +12,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Student ID required' }, { status: 400 });
     }
 
-    // 1. Try Cloudflare D1
+    // 1. Primary: Cloudflare D1
     try {
       const d1Users = await queryD1('SELECT * FROM users WHERE id = ? OR email = ? LIMIT 1', [studentId, studentId]);
       if (d1Users && d1Users.length > 0) {
@@ -71,7 +69,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         });
 
         const mockAttempts = (d1Attempts || []).filter((a: any) => a.type === 'mock' || a.test_id);
-        const practiceAttempts = (d1Attempts || []).filter((a: any) => a.type === 'practice' || !a.test_id);
 
         const mockTestHistory = mockAttempts.map((a: any) => {
           const test = (mockTests || []).find((m: any) => String(m.id) === String(a.test_id));
@@ -147,115 +144,63 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       console.warn('[Admin Student Stats GET D1 Error]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      const user = (db.users || []).find((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
-      if (!user) {
-        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-      }
-
-      const course = (db.courses || []).find((c) => String(c._id) === String(user.locked_course_id) || String(c.id) === String(user.locked_course_id));
-      const userCourseId = user.locked_course_id ? String(user.locked_course_id) : null;
-
-      const courseStudents = (db.users || [])
-        .filter((u) => u.status !== 'Deleted' && (userCourseId ? String(u.locked_course_id) === userCourseId : true))
-        .sort((a, b) => (b.xp_total || 0) - (a.xp_total || 0));
-
-      const rankIndex = courseStudents.findIndex((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
-      const rank = rankIndex !== -1 ? rankIndex + 1 : 1;
-
-      const attempts = (db.attempts || []).filter((a) => String(a.user_id || a.student_id) === String(studentId));
-
-      const mockAttempts = attempts.filter((a) => a.mock_test_id || a.test_id || a.test_type === 'mock_test');
-      const practiceAttempts = attempts.filter((a) => !a.mock_test_id && !a.test_id);
-
-      const mockTestHistory = mockAttempts.map((a) => {
-        const test = (db.mockTests || []).find((m) => String(m._id) === String(a.mock_test_id || a.test_id) || String(m.id) === String(a.mock_test_id || a.test_id));
-        const totalMarks = a.total_marks || test?.total_marks || (test?.cutoff_marks ? test.cutoff_marks * 2 : 300);
-        return {
-          id: a._id || a.id,
-          title: a.topic_tag || test?.title || 'Full Mock Examination',
-          score: a.score || 0,
-          totalMarks,
-          percentage: totalMarks > 0 ? Math.round(((a.score || 0) / totalMarks) * 100) : 0,
-          timeSpentSeconds: a.time_spent_seconds || 0,
-          timeSpentMinutes: Math.round((a.time_spent_seconds || 0) / 60),
-          date: a.submitted_at || a.completed_at || a.created_at || new Date().toISOString(),
-        };
-      });
-
-      return NextResponse.json({
-        student: {
-          id: user._id || user.id,
-          name: user.name,
-          email: user.email,
-          xpTotal: user.xp_total || 0,
-          status: user.status || 'Active',
-          lockedCourseName: course?.name || 'Unassigned Track',
-          rank,
-          totalStudentsInBatch: courseStudents.length,
-        },
-        stats: {
-          mockTestsAttempted: mockAttempts.length,
-          mockTestHistory,
-          modulesCompletedCount: practiceAttempts.length,
-          totalModulesInCourse: 10,
-          moduleCompletionPercentage: 50,
-          avgTimePerQuestionSeconds: 30,
-          totalAttempts: attempts.length,
-          overallAccuracyPercentage: 75,
-        },
-      });
-    }
-
-    // 3. Mongoose Fallback
-    const user = await User.findById(studentId);
+    // 2. Shared DB Local Resilience Fallback
+    const db = readSharedDb();
+    const user = (db.users || []).find((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
     if (!user) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    const userIdStr = user._id.toString();
-    const userCourseId = user.locked_course_id ? user.locked_course_id.toString() : null;
+    const course = (db.courses || []).find((c) => String(c._id) === String(user.locked_course_id) || String(c.id) === String(user.locked_course_id));
+    const userCourseId = user.locked_course_id ? String(user.locked_course_id) : null;
 
-    let courseName = 'Unassigned';
-    if (user.locked_course_id) {
-      const courseObj = await Course.findById(user.locked_course_id);
-      if (courseObj) courseName = courseObj.name;
-    }
+    const courseStudents = (db.users || [])
+      .filter((u) => u.status !== 'Deleted' && (userCourseId ? String(u.locked_course_id) === userCourseId : true))
+      .sort((a, b) => (b.xp_total || 0) - (a.xp_total || 0));
 
-    const batchQuery: any = { status: { $ne: 'Deleted' } };
-    if (userCourseId) batchQuery.locked_course_id = userCourseId;
-
-    const courseStudents = await User.find(batchQuery).sort({ xp_total: -1 }).select('_id xp_total');
-    const rankIndex = courseStudents.findIndex((u) => u._id.toString() === userIdStr);
+    const rankIndex = courseStudents.findIndex((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
     const rank = rankIndex !== -1 ? rankIndex + 1 : 1;
 
-    const attempts = await Attempt.find({
-      $or: [{ user_id: userIdStr }, { student_id: userIdStr }],
-    }).sort({ created_at: -1 });
+    const attempts = (db.attempts || []).filter((a) => String(a.user_id || a.student_id) === String(studentId));
+
+    const mockAttempts = attempts.filter((a) => a.mock_test_id || a.test_id || a.test_type === 'mock_test');
+    const practiceAttempts = attempts.filter((a) => !a.mock_test_id && !a.test_id);
+
+    const mockTestHistory = mockAttempts.map((a) => {
+      const test = (db.mockTests || []).find((m) => String(m._id) === String(a.mock_test_id || a.test_id) || String(m.id) === String(a.mock_test_id || a.test_id));
+      const totalMarks = a.total_marks || test?.total_marks || (test?.cutoff_marks ? test.cutoff_marks * 2 : 300);
+      return {
+        id: a._id || a.id,
+        title: a.topic_tag || test?.title || 'Full Mock Examination',
+        score: a.score || 0,
+        totalMarks,
+        percentage: totalMarks > 0 ? Math.round(((a.score || 0) / totalMarks) * 100) : 0,
+        timeSpentSeconds: a.time_spent_seconds || 0,
+        timeSpentMinutes: Math.round((a.time_spent_seconds || 0) / 60),
+        date: a.submitted_at || a.completed_at || a.created_at || new Date().toISOString(),
+      };
+    });
 
     return NextResponse.json({
       student: {
-        id: userIdStr,
+        id: user._id || user.id,
         name: user.name,
         email: user.email,
         xpTotal: user.xp_total || 0,
         status: user.status || 'Active',
-        lockedCourseName: courseName,
+        lockedCourseName: course?.name || 'Unassigned Track',
         rank,
         totalStudentsInBatch: courseStudents.length,
       },
       stats: {
-        mockTestsAttempted: attempts.length,
-        mockTestHistory: [],
-        modulesCompletedCount: 0,
+        mockTestsAttempted: mockAttempts.length,
+        mockTestHistory,
+        modulesCompletedCount: practiceAttempts.length,
         totalModulesInCourse: 10,
-        moduleCompletionPercentage: 0,
-        avgTimePerQuestionSeconds: 0,
+        moduleCompletionPercentage: 50,
+        avgTimePerQuestionSeconds: 30,
         totalAttempts: attempts.length,
-        overallAccuracyPercentage: 0,
+        overallAccuracyPercentage: 75,
       },
     });
   } catch (error: any) {
