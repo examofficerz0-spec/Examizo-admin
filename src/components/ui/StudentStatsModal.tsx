@@ -247,7 +247,7 @@ export const StudentStatsModal: React.FC<StudentStatsModalProps> = ({ studentId,
                         <div>
                           <div className="font-extrabold text-slate-900 dark:text-white">{test.title}</div>
                           <div className="text-[10px] text-slate-400 font-medium">
-                            {new Date(test.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • {test.timeSpentMinutes} mins duration
+                            {new Date(test.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • {test.timeSpentMinutes > 0 ? `${test.timeSpentMinutes} mins duration` : test.timeSpentSeconds > 0 ? `${test.timeSpentSeconds}s duration` : '< 1 min duration'}
                           </div>
                         </div>
 
