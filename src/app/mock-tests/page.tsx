@@ -3,11 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
-import { FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2, BookOpen, Filter, CheckSquare, Square, Search, Folder } from 'lucide-react';
+import {
+  FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
+  BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles
+} from 'lucide-react';
 
 export default function MockTestManagementPage() {
-  const [activeTab, setActiveTab] = useState<'mock_tests' | 'weekly_dpp'>('mock_tests');
+  const [activeTab, setActiveTab] = useState<'mock_tests' | 'presets' | 'weekly_dpp'>('mock_tests');
   const [tests, setTests] = useState<any[]>([]);
+  const [presets, setPresets] = useState<any[]>([]);
   const [weeklyDpps, setWeeklyDpps] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
@@ -21,9 +25,22 @@ export default function MockTestManagementPage() {
   const [durationMinutes, setDurationMinutes] = useState(180);
   const [cutoffMarks, setCutoffMarks] = useState(120);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+  const [isDynamicReshuffle, setIsDynamicReshuffle] = useState<boolean>(true);
+  const [subjectAllocations, setSubjectAllocations] = useState<Record<string, number>>({});
+  const [batchSelectCount, setBatchSelectCount] = useState<number>(50);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Preset Modal State
+  const [showAddPresetModal, setShowAddPresetModal] = useState(false);
+  const [presetTitle, setPresetTitle] = useState('');
+  const [presetCourseId, setPresetCourseId] = useState('');
+  const [presetDuration, setPresetDuration] = useState(180);
+  const [presetCutoff, setPresetCutoff] = useState(120);
+  const [presetAllocations, setPresetAllocations] = useState<Record<string, number>>({});
+  const [presetIsDynamic, setPresetIsDynamic] = useState(true);
 
   // Weekly DPP Modal State
   const [showAddDppModal, setShowAddDppModal] = useState(false);
@@ -31,6 +48,7 @@ export default function MockTestManagementPage() {
   const [dppDurationMinutes, setDppDurationMinutes] = useState(30);
   const [dppCourseId, setDppCourseId] = useState('');
   const [selectedDppQuestionIds, setSelectedDppQuestionIds] = useState<string[]>([]);
+  const [dppBatchSelectCount, setDppBatchSelectCount] = useState<number>(25);
 
   // Subject & Topic filter state for Question Selection
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
@@ -45,25 +63,29 @@ export default function MockTestManagementPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [tRes, cRes, qRes, dppRes] = await Promise.all([
+      const [tRes, cRes, qRes, dppRes, pRes] = await Promise.all([
         fetch('/api/mock-tests'),
         fetch('/api/courses'),
         fetch('/api/questions'),
         fetch('/api/weekly-dpp'),
+        fetch('/api/presets'),
       ]);
       const tData = await tRes.json();
       const cData = await cRes.json();
       const qData = await qRes.json();
       const dppData = await dppRes.json();
+      const pData = await pRes.json();
 
       setTests(tData.tests || []);
       setCourses(cData.courses || []);
       setQuestions(qData.questions || []);
       setWeeklyDpps(dppData.weeklyDpps || []);
+      setPresets(pData.presets || []);
 
       if (cData.courses?.length > 0) {
         setCourseId(cData.courses[0]._id);
         setDppCourseId(cData.courses[0]._id);
+        setPresetCourseId(cData.courses[0]._id);
       }
     } catch (err) {
       console.error(err);
@@ -76,22 +98,100 @@ export default function MockTestManagementPage() {
     fetchData();
   }, []);
 
-  const applyNeetPreset = () => {
-    const neetCourse = courses.find((c) => c.name.toLowerCase().includes('neet')) || courses[0];
-    if (neetCourse) setCourseId(neetCourse._id);
-    setTitle('NEET Standard Full-Length Paper 2024');
-    setType('full');
-    setDurationMinutes(200);
-    setCutoffMarks(520);
+  // Update preset default subject allocations when presetCourseId changes
+  useEffect(() => {
+    if (!presetCourseId) return;
+    const crs = courses.find((c) => String(c._id) === String(presetCourseId) || String(c.id) === String(presetCourseId));
+    if (crs?.subjects && Array.isArray(crs.subjects)) {
+      const defaults: Record<string, number> = {};
+      const cName = (crs.name || '').toLowerCase();
+      crs.subjects.forEach((sub: string) => {
+        if (cName.includes('jee')) {
+          defaults[sub] = sub.toLowerCase().includes('math') ? 90 : 45;
+        } else if (cName.includes('neet')) {
+          defaults[sub] = sub.toLowerCase().includes('bio') ? 90 : 45;
+        } else {
+          defaults[sub] = 30;
+        }
+      });
+      setPresetAllocations(defaults);
+    }
+  }, [presetCourseId, courses]);
+
+  const handleCreatePreset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    try {
+      const res = await fetch('/api/presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: presetCourseId || courseId,
+          title: presetTitle,
+          duration_minutes: Number(presetDuration),
+          cutoff_marks: Number(presetCutoff),
+          subject_allocations: presetAllocations,
+          is_dynamic_reshuffle: presetIsDynamic,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to create exam preset');
+      } else {
+        setShowAddPresetModal(false);
+        setPresetTitle('');
+        fetchData();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error creating preset');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const applyJeePreset = () => {
-    const jeeCourse = courses.find((c) => c.name.toLowerCase().includes('jee')) || courses[0];
-    if (jeeCourse) setCourseId(jeeCourse._id);
-    setTitle('JEE Main Grand Mock Examination');
-    setType('full');
-    setDurationMinutes(180);
-    setCutoffMarks(120);
+  const handleDeletePreset = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this exam preset?')) return;
+    try {
+      await fetch(`/api/presets/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const applyPresetToModal = (p: any) => {
+    if (!p) return;
+    setSelectedPresetId(p._id || p.id);
+    setCourseId(p.course_id);
+    setTitle(`${p.title} - Mock Examination`);
+    setDurationMinutes(p.duration_minutes || 180);
+    setCutoffMarks(p.cutoff_marks || 120);
+    setIsDynamicReshuffle(p.is_dynamic_reshuffle !== false);
+    setSubjectAllocations(p.subject_allocations || {});
+
+    // Automatically batch select matching questions from question bank for static snapshot
+    const newSelectedIds: string[] = [];
+    if (p.subject_allocations) {
+      Object.entries(p.subject_allocations).forEach(([sub, count]) => {
+        const subLower = sub.toLowerCase().trim();
+        const matching = questions.filter((q) => {
+          const cId = typeof q.course_id === 'object' ? q.course_id?._id : q.course_id;
+          const isSameCourse = String(cId) === String(p.course_id);
+          const qSub = (q.subject || '').toLowerCase().trim();
+          const tag = (q.topic_tag || '').toLowerCase().trim();
+          return isSameCourse && (qSub === subLower || tag.startsWith(subLower) || tag.includes(subLower));
+        });
+        const picked = matching.slice(0, Number(count || 0)).map((q) => q._id);
+        newSelectedIds.push(...picked);
+      });
+    }
+    if (newSelectedIds.length > 0) {
+      setSelectedQuestionIds(newSelectedIds);
+    }
+    setShowAddModal(true);
   };
 
   const handleCreateTest = async (e: React.FormEvent) => {
@@ -110,6 +210,9 @@ export default function MockTestManagementPage() {
           duration_minutes: Number(durationMinutes),
           cutoff_marks: Number(cutoffMarks),
           question_ids: selectedQuestionIds,
+          preset_id: selectedPresetId || null,
+          is_dynamic_reshuffle: isDynamicReshuffle,
+          subject_allocations: subjectAllocations,
         }),
       });
 
@@ -120,6 +223,7 @@ export default function MockTestManagementPage() {
         setShowAddModal(false);
         setTitle('');
         setSelectedQuestionIds([]);
+        setSelectedPresetId('');
         fetchData();
       }
     } catch (err: any) {
@@ -248,44 +352,37 @@ export default function MockTestManagementPage() {
   };
 
   // Group questions by Subject -> Topic
-  const groupedQuestions = React.useMemo(() => {
-    const map: Record<string, Record<string, any[]>> = {};
+  const groupedQuestions: Record<string, Record<string, any[]>> = {};
+  availableCourseQuestions.forEach((q) => {
+    const { subject, topic } = getSubjectAndTopic(q);
+    if (!groupedQuestions[subject]) {
+      groupedQuestions[subject] = {};
+    }
+    if (!groupedQuestions[subject][topic]) {
+      groupedQuestions[subject][topic] = [];
+    }
+    groupedQuestions[subject][topic].push(q);
+  });
 
-    availableCourseQuestions.forEach((q) => {
-      const { subject, topic } = getSubjectAndTopic(q);
-      if (!map[subject]) map[subject] = {};
-      if (!map[subject][topic]) map[subject][topic] = [];
-      map[subject][topic].push(q);
-    });
+  const allAvailableSubjects = Object.keys(groupedQuestions).sort((a, b) => {
+    const idxA = activeCourseSubjects.indexOf(a);
+    const idxB = activeCourseSubjects.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
-    return map;
-  }, [availableCourseQuestions, activeCourseSubjects]);
+  const allAvailableTopics = selectedSubjectFilter === 'all'
+    ? Array.from(new Set(availableCourseQuestions.map((q) => getSubjectAndTopic(q).topic)))
+    : Object.keys(groupedQuestions[selectedSubjectFilter] || {});
 
-  const allAvailableSubjects = React.useMemo(() => {
-    const subjects = new Set<string>();
-    activeCourseSubjects.forEach((s) => {
-      if (groupedQuestions[s] && Object.keys(groupedQuestions[s]).length > 0) {
-        subjects.add(s);
-      }
-    });
-    Object.keys(groupedQuestions).forEach((s) => subjects.add(s));
-    return Array.from(subjects);
-  }, [groupedQuestions, activeCourseSubjects]);
+  const handleToggleQuestion = (qId: string) => {
+    setSelectedQuestionIds((prev) =>
+      prev.includes(qId) ? prev.filter((id) => id !== qId) : [...prev, qId]
+    );
+  };
 
-  const allAvailableTopics = React.useMemo(() => {
-    const topicsSet = new Set<string>();
-    Object.entries(groupedQuestions).forEach(([sub, topicsMap]) => {
-      if (selectedSubjectFilter === 'all' || selectedSubjectFilter === sub) {
-        Object.keys(topicsMap).forEach((t) => topicsSet.add(t));
-      }
-    });
-    return Array.from(topicsSet);
-  }, [groupedQuestions, selectedSubjectFilter]);
-
-  const [batchSelectCount, setBatchSelectCount] = useState<number>(50);
-  const [dppBatchSelectCount, setDppBatchSelectCount] = useState<number>(25);
-
-  // Additive batch selection: Adds next `count` unselected questions from active subject/filter
   const handleAddQuestions = (count: number) => {
     const candidates: any[] = [];
     Object.entries(groupedQuestions).forEach(([sub, topicsMap]) => {
@@ -302,7 +399,6 @@ export default function MockTestManagementPage() {
       ? candidates.filter((q) => (q.question_text || '').toLowerCase().includes(searchQuestionQuery.toLowerCase()))
       : candidates;
 
-    // Take only questions not currently selected
     const unselected = filteredPool.filter((q) => !selectedQuestionIds.includes(q._id));
     const toAdd = unselected.slice(0, count).map((q) => q._id);
 
@@ -341,65 +437,45 @@ export default function MockTestManagementPage() {
     const currentSubTopics = groupedQuestions[selectedSubjectFilter] || {};
     const subIds = new Set<string>();
     Object.values(currentSubTopics).forEach((qList) => qList.forEach((q) => subIds.add(q._id)));
-    setSelectedQuestionIds((prev) => prev.filter((id) => !subIds.has(id)));
+    setSelectedQuestionIds(selectedQuestionIds.filter((id) => !subIds.has(id)));
   };
 
-  const toggleQuestionSelection = (qId: string) => {
-    if (selectedQuestionIds.includes(qId)) {
-      setSelectedQuestionIds(selectedQuestionIds.filter((id) => id !== qId));
-    } else {
-      setSelectedQuestionIds([...selectedQuestionIds, qId]);
-    }
-  };
+  // Weekly DPP Grouping
+  const availableDppCourse = courses.find((c) => c._id === dppCourseId);
+  const availableDppSubjects: string[] = availableDppCourse?.subjects || ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
 
-  const toggleSelectAllTopic = (sub: string, top: string, qList: any[]) => {
-    const ids = qList.map((q) => q._id);
-    const allSelected = ids.every((id) => selectedQuestionIds.includes(id));
+  const availableDppQuestions = questions.filter((q) => {
+    const cId = typeof q.course_id === 'object' ? q.course_id?._id : q.course_id;
+    const isDirectMatch = String(cId) === String(dppCourseId);
+    const selectedCourseObj = courses.find((c) => String(c._id) === String(dppCourseId));
+    const questionCourseObj = courses.find((c) => String(c._id) === String(cId));
 
-    if (allSelected) {
-      setSelectedQuestionIds(selectedQuestionIds.filter((id) => !ids.includes(id)));
-    } else {
-      const next = new Set([...selectedQuestionIds, ...ids]);
-      setSelectedQuestionIds(Array.from(next));
-    }
-  };
+    const sName = (selectedCourseObj?.name || '').toLowerCase();
+    const qName = (questionCourseObj?.name || '').toLowerCase();
 
-  const toggleSelectAllSubject = (sub: string) => {
-    const subTopics = groupedQuestions[sub] || {};
-    const ids: string[] = [];
-    Object.values(subTopics).forEach((qList) => {
-      qList.forEach((q) => ids.push(q._id));
-    });
+    const isTrackMatch = sName && qName && (
+      sName === qName ||
+      (sName.includes('neet') && qName.includes('neet')) ||
+      (sName.includes('jee') && qName.includes('jee'))
+    );
 
-    const allSelected = ids.every((id) => selectedQuestionIds.includes(id));
-    if (allSelected) {
-      setSelectedQuestionIds(selectedQuestionIds.filter((id) => !ids.includes(id)));
-    } else {
-      const next = new Set([...selectedQuestionIds, ...ids]);
-      setSelectedQuestionIds(Array.from(next));
-    }
-  };
-
-  // Weekly DPP Grouping & Memos
-  const availableDppQuestions = React.useMemo(() => {
-    return questions.filter((q) => {
-      const cId = typeof q.course_id === 'object' ? q.course_id?._id : q.course_id;
-      return String(cId) === String(dppCourseId);
-    });
-  }, [questions, dppCourseId]);
-
-  const activeDppCourse = courses.find((c) => c._id === dppCourseId);
-  const activeDppSubjects: string[] = activeDppCourse?.subjects || ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
+    return isDirectMatch || isTrackMatch;
+  });
 
   const getDppSubjectAndTopic = (q: any) => {
     const tag = (q.topic_tag || '').trim();
+    const qSub = (q.subject || '').toString().trim();
     let subject = 'General';
     let topic = tag;
 
-    for (const s of activeDppSubjects) {
-      if (tag.toLowerCase().startsWith(s.toLowerCase()) || tag.toLowerCase().includes(s.toLowerCase())) {
+    for (const s of availableDppSubjects) {
+      if (
+        tag.toLowerCase().startsWith(s.toLowerCase()) ||
+        qSub.toLowerCase() === s.toLowerCase() ||
+        tag.toLowerCase().includes(s.toLowerCase())
+      ) {
         subject = s;
-        const rest = tag.replace(new RegExp(s, 'i'), '').replace(/^[\s\-:]+/, '').trim();
+        const rest = tag.toLowerCase().startsWith(s.toLowerCase()) ? tag.slice(s.length).replace(/^[\s\-:]+/, '').trim() : tag;
         topic = rest || tag;
         break;
       }
@@ -414,59 +490,35 @@ export default function MockTestManagementPage() {
     return { subject, topic: topic || 'General Topics' };
   };
 
-  const groupedDppQuestions = React.useMemo(() => {
-    const map: Record<string, Record<string, any[]>> = {};
-
-    availableDppQuestions.forEach((q) => {
-      const { subject, topic } = getDppSubjectAndTopic(q);
-      if (!map[subject]) map[subject] = {};
-      if (!map[subject][topic]) map[subject][topic] = [];
-      map[subject][topic].push(q);
-    });
-
-    return map;
-  }, [availableDppQuestions, activeDppSubjects]);
-
-  const allDppSubjects = React.useMemo(() => {
-    return Object.keys(groupedDppQuestions);
-  }, [groupedDppQuestions]);
-
-  const allDppTopics = React.useMemo(() => {
-    const topicsSet = new Set<string>();
-    Object.entries(groupedDppQuestions).forEach(([sub, topicsMap]) => {
-      if (dppSubjectFilter === 'all' || dppSubjectFilter === sub) {
-        Object.keys(topicsMap).forEach((t) => topicsSet.add(t));
-      }
-    });
-    return Array.from(topicsSet);
-  }, [groupedDppQuestions, dppSubjectFilter]);
-
-  const toggleDppSelectAllTopic = (sub: string, top: string, qList: any[]) => {
-    const ids = qList.map((q) => q._id);
-    const allSelected = ids.every((id) => selectedDppQuestionIds.includes(id));
-
-    if (allSelected) {
-      setSelectedDppQuestionIds(selectedDppQuestionIds.filter((id) => !ids.includes(id)));
-    } else {
-      const next = new Set([...selectedDppQuestionIds, ...ids]);
-      setSelectedDppQuestionIds(Array.from(next));
+  const groupedDppQuestions: Record<string, Record<string, any[]>> = {};
+  availableDppQuestions.forEach((q) => {
+    const { subject, topic } = getDppSubjectAndTopic(q);
+    if (!groupedDppQuestions[subject]) {
+      groupedDppQuestions[subject] = {};
     }
-  };
-
-  const toggleDppSelectAllSubject = (sub: string) => {
-    const subTopics = groupedDppQuestions[sub] || {};
-    const ids: string[] = [];
-    Object.values(subTopics).forEach((qList) => {
-      qList.forEach((q) => ids.push(q._id));
-    });
-
-    const allSelected = ids.every((id) => selectedDppQuestionIds.includes(id));
-    if (allSelected) {
-      setSelectedDppQuestionIds(selectedDppQuestionIds.filter((id) => !ids.includes(id)));
-    } else {
-      const next = new Set([...selectedDppQuestionIds, ...ids]);
-      setSelectedDppQuestionIds(Array.from(next));
+    if (!groupedDppQuestions[subject][topic]) {
+      groupedDppQuestions[subject][topic] = [];
     }
+    groupedDppQuestions[subject][topic].push(q);
+  });
+
+  const allDppSubjects = Object.keys(groupedDppQuestions).sort((a, b) => {
+    const idxA = availableDppSubjects.indexOf(a);
+    const idxB = availableDppSubjects.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  const allDppTopics = dppSubjectFilter === 'all'
+    ? Array.from(new Set(availableDppQuestions.map((q) => getDppSubjectAndTopic(q).topic)))
+    : Object.keys(groupedDppQuestions[dppSubjectFilter] || {});
+
+  const handleToggleDppQuestion = (qId: string) => {
+    setSelectedDppQuestionIds((prev) =>
+      prev.includes(qId) ? prev.filter((id) => id !== qId) : [...prev, qId]
+    );
   };
 
   const handleAddDppQuestions = (count: number) => {
@@ -531,11 +583,14 @@ export default function MockTestManagementPage() {
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader title="Mock Test Management" subtitle="Configure and publish full-length or sectional test papers (NEET, JEE)" />
+        <AdminHeader
+          title="Mock Test & Blueprint Management"
+          subtitle="Configure exam presets, auto-shuffling mock tests, and weekly daily practice papers"
+        />
 
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
           {/* Header Navigation Tabs */}
-          <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <button
               type="button"
               onClick={() => setActiveTab('mock_tests')}
@@ -545,14 +600,25 @@ export default function MockTestManagementPage() {
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <FileCheck className="w-4 h-4" /> Mock Examinations
+              <FileCheck className="w-4 h-4" /> Mock Examinations ({tests.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('presets')}
+              className={`px-4 py-2 text-xs font-extrabold rounded-lg transition-all duration-200 active:scale-95 flex items-center gap-2 ${
+                activeTab === 'presets'
+                  ? 'bg-purple-700 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Sliders className="w-4 h-4 text-purple-400" /> Exam Presets & Blueprints ({presets.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('weekly_dpp')}
               className={`px-4 py-2 text-xs font-extrabold rounded-lg transition-all duration-200 active:scale-95 flex items-center gap-2 ${
                 activeTab === 'weekly_dpp'
-                  ? 'bg-[#0B192C] text-white shadow-xs'
+                  ? 'bg-emerald-700 text-white shadow-xs'
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
@@ -569,7 +635,11 @@ export default function MockTestManagementPage() {
                   <p className="text-xs text-slate-500">Published tests are immediately available for students in their locked course track.</p>
                 </div>
                 <button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => {
+                    setSelectedPresetId('');
+                    setSelectedQuestionIds([]);
+                    setShowAddModal(true);
+                  }}
                   type="button"
                   className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                 >
@@ -585,13 +655,13 @@ export default function MockTestManagementPage() {
                 ) : tests.length === 0 ? (
                   <div className="col-span-full p-12 text-center text-xs text-slate-500 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                     <FileCheck className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-                    No mock tests configured yet. Click 'Create Mock Test' to set up a NEET or JEE paper!
+                    No mock tests configured yet. Click &apos;Create Mock Test&apos; to set up a NEET or JEE paper!
                   </div>
                 ) : (
                   tests.map((test) => (
                     <div
                       key={test._id}
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5 shadow-xs flex flex-col justify-between"
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex justify-between items-start mb-3">
@@ -599,15 +669,22 @@ export default function MockTestManagementPage() {
                             {test.course_name || test.course_id?.name || 'General Track'}
                           </span>
                           <button
-                            onClick={() => setDeletingId(test._id)}
+                            onClick={() => handleDeleteTest(test._id)}
                             className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                            title="Deactivate test"
+                            title="Delete test"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
 
                         <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">{test.title}</h3>
+
+                        {test.is_dynamic_reshuffle && (
+                          <div className="mb-3 px-2 py-1 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-md text-[10px] font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                            <Zap className="w-3 h-3 text-purple-600" />
+                            <span>Adaptive Reshuffle Active (Mistakes Repeat Until Mastered)</span>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-3 gap-2 py-3 border-y border-slate-100 dark:border-slate-800 text-[11px] mb-4">
                           <div className="text-center">
@@ -638,7 +715,111 @@ export default function MockTestManagementPage() {
             </div>
           )}
 
-          {/* TAB 2: WEEKLY DPP PAPERS */}
+          {/* TAB 2: EXAM PRESETS & BLUEPRINTS */}
+          {activeTab === 'presets' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-out">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-purple-600" /> Exam Presets & Blueprints
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Define subject allocation rules (e.g. 45 Phy, 45 Chem, 90 Math). Tests created with presets support automatic dynamic reshuffling and error-correction mastery!
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAddPresetModal(true)}
+                  type="button"
+                  className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Exam Preset
+                </button>
+              </div>
+
+              {/* Presets Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {loading ? (
+                  <div className="col-span-full p-12 text-center text-xs text-slate-500">Loading exam presets...</div>
+                ) : presets.length === 0 ? (
+                  <div className="col-span-full p-12 text-center text-xs text-slate-500 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                    <Sliders className="w-8 h-8 mx-auto text-purple-400 mb-2" />
+                    No custom presets configured yet. Click &apos;Create Exam Preset&apos; to set up a JEE or NEET blueprint!
+                  </div>
+                ) : (
+                  presets.map((preset) => (
+                    <div
+                      key={preset._id || preset.id}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col justify-between space-y-4"
+                    >
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-purple-50 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            {preset.course_name || 'Course Track'}
+                          </span>
+                          <button
+                            onClick={() => handleDeletePreset(preset._id || preset.id)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                            title="Delete Preset"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">{preset.title}</h3>
+
+                        {/* Subject Allocations Pill Breakdown */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Subject Blueprint ({preset.total_questions || 180} Total Questions):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(preset.subject_allocations || {}).map(([sub, count]) => (
+                              <span
+                                key={sub}
+                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1"
+                              >
+                                <span>{sub}:</span>
+                                <span className="font-mono text-purple-600 dark:text-purple-400">{String(count)} Qs</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 py-3 border-y border-slate-100 dark:border-slate-800 text-[11px] mt-3">
+                          <div className="text-center">
+                            <Clock className="w-3.5 h-3.5 mx-auto text-slate-400 mb-1" />
+                            <span className="block font-bold text-slate-800 dark:text-slate-200">{preset.duration_minutes} Mins</span>
+                          </div>
+                          <div className="text-center border-l border-slate-100 dark:border-slate-800">
+                            <Award className="w-3.5 h-3.5 mx-auto text-slate-400 mb-1" />
+                            <span className="block font-bold text-slate-800 dark:text-slate-200">{preset.cutoff_marks} Cutoff Marks</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          <Zap className="w-3 h-3" />
+                          <span>Dynamic Reshuffling & Mastery Active</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetToModal(preset)}
+                          className="w-full py-2 px-3 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-xs active:scale-95"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          1-Click Launch Mock Test from Preset
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: WEEKLY DPP PAPERS */}
           {activeTab === 'weekly_dpp' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-out">
               <div className="flex justify-between items-center">
@@ -668,13 +849,13 @@ export default function MockTestManagementPage() {
                 ) : weeklyDpps.length === 0 ? (
                   <div className="col-span-full p-12 text-center text-xs text-slate-500 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                     <HelpCircle className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
-                    No custom Weekly DPP configured yet. Click 'Create Weekly DPP' to add questions and duration!
+                    No custom Weekly DPP configured yet. Click &apos;Create Weekly DPP&apos; to add questions and duration!
                   </div>
                 ) : (
                   weeklyDpps.map((dpp) => (
                     <div
                       key={dpp._id}
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5 shadow-xs flex flex-col justify-between"
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex justify-between items-start mb-3">
@@ -719,43 +900,190 @@ export default function MockTestManagementPage() {
         </main>
       </div>
 
-      {/* Create Mock Test Modal */}
+      {/* CREATE EXAM PRESET MODAL */}
+      {showAddPresetModal && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl my-8 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-purple-600" /> Create Custom Exam Preset / Blueprint
+                </h3>
+                <p className="text-xs text-slate-500">Define custom subject quotas (e.g. 45 Phy, 45 Chem, 90 Math for JEE).</p>
+              </div>
+              <button onClick={() => setShowAddPresetModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {error && <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 text-xs rounded-lg">{error}</div>}
+
+            <form onSubmit={handleCreatePreset} className="flex-1 flex flex-col space-y-4 text-xs overflow-y-auto pr-1">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Target Course</label>
+                <select
+                  value={presetCourseId}
+                  onChange={(e) => setPresetCourseId(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                >
+                  {courses.map((c) => (
+                    <option key={c._id || c.id} value={c._id || c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Preset Blueprint Title</label>
+                <input
+                  type="text"
+                  required
+                  value={presetTitle}
+                  onChange={(e) => setPresetTitle(e.target.value)}
+                  placeholder="e.g. JEE Main 180Q Preset (45 Phy, 45 Chem, 90 Math)"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Duration (Minutes)</label>
+                  <input
+                    type="number"
+                    required
+                    value={presetDuration}
+                    onChange={(e) => setPresetDuration(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Cutoff Score</label>
+                  <input
+                    type="number"
+                    required
+                    value={presetCutoff}
+                    onChange={(e) => setPresetCutoff(Number(e.target.value))}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Subject-Wise Question Allocation Blueprint */}
+              <div className="p-4 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="font-extrabold text-purple-950 dark:text-purple-200 flex items-center gap-1.5 text-xs">
+                    <span>📊</span> Subject-Wise Question Quotas:
+                  </span>
+                  <span className="font-extrabold text-xs px-2.5 py-0.5 rounded-full bg-purple-600 text-white">
+                    {Object.values(presetAllocations).reduce((a, b) => a + Number(b || 0), 0)} Total Qs
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {(courses.find((c) => String(c._id) === String(presetCourseId) || String(c.id) === String(presetCourseId))?.subjects || ['Physics', 'Chemistry', 'Mathematics']).map((sub: string) => (
+                    <div key={sub} className="flex items-center justify-between gap-3 bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-purple-100 dark:border-purple-900">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{sub}</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          value={presetAllocations[sub] ?? 45}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setPresetAllocations((prev) => ({ ...prev, [sub]: val }));
+                          }}
+                          className="w-20 p-1 text-center font-bold bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md text-slate-900 dark:text-white"
+                        />
+                        <span className="text-[11px] text-slate-400 font-semibold">Qs</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dynamic Reshuffling & Mastery Checkbox */}
+              <div className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-800/80 rounded-xl">
+                <input
+                  type="checkbox"
+                  id="presetDynamic"
+                  checked={presetIsDynamic}
+                  onChange={(e) => setPresetIsDynamic(e.target.checked)}
+                  className="w-4 h-4 rounded text-purple-600"
+                />
+                <label htmlFor="presetDynamic" className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                  Enable Adaptive Spaced-Repetition Reshuffling (Students repeat mistakes until correct; correct questions rotate)
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPresetModal(false)}
+                  className="flex-1 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl shadow-xs"
+                >
+                  {submitting ? 'Saving...' : 'Save Exam Preset'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE MOCK TEST MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-xl w-full shadow-lg my-8 max-h-[90vh] flex flex-col">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-xl w-full shadow-2xl my-8 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Configure Mock Test Paper</h3>
-                <p className="text-xs text-slate-500">Set exam paper parameters or use standard NEET / JEE presets.</p>
+                <p className="text-xs text-slate-500">Apply saved blueprints (e.g. JEE 180Q, NEET 180Q) or pick questions manually.</p>
               </div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Quick Presets Banner */}
-            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-semibold">
-                <FileCheck className="w-4 h-4 text-amber-600" />
-                <span>Quick Preset Templates:</span>
+            {/* Quick Presets Selection Dropdown */}
+            {presets.length > 0 && (
+              <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-extrabold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-purple-600" /> Apply Saved Blueprint Preset:
+                  </span>
+                  {selectedPresetId && (
+                    <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                      ✓ Blueprint Applied
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedPresetId}
+                    onChange={(e) => {
+                      const pId = e.target.value;
+                      const selectedP = presets.find((p) => String(p._id || p.id) === String(pId));
+                      if (selectedP) applyPresetToModal(selectedP);
+                    }}
+                    className="w-full p-2 bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    <option value="">-- Choose a Preset (e.g. JEE 180Q, NEET 180Q) --</option>
+                    {presets.map((p) => (
+                      <option key={p._id || p.id} value={p._id || p.id}>
+                        {p.title} ({p.total_questions || 180} Qs • {p.duration_minutes}m)
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={applyNeetPreset}
-                  className="px-2.5 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold text-[11px] rounded-lg hover:bg-amber-300"
-                >
-                  🧬 NEET (200m)
-                </button>
-                <button
-                  type="button"
-                  onClick={applyJeePreset}
-                  className="px-2.5 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold text-[11px] rounded-lg hover:bg-amber-300"
-                >
-                  ⚡ JEE (180m)
-                </button>
-              </div>
-            </div>
+            )}
 
             {error && <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 text-xs rounded-lg">{error}</div>}
 
@@ -768,7 +1096,7 @@ export default function MockTestManagementPage() {
                   className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                 >
                   {courses.map((c) => (
-                    <option key={c._id} value={c._id}>
+                    <option key={c._id || c.id} value={c._id || c.id}>
                       {c.name}
                     </option>
                   ))}
@@ -782,8 +1110,8 @@ export default function MockTestManagementPage() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. NEET Full-Length Mock Test 01"
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  placeholder="e.g. JEE Main Full-Length Mock Test 01"
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
                 />
               </div>
 
@@ -806,7 +1134,7 @@ export default function MockTestManagementPage() {
                     required
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-bold"
                   />
                 </div>
                 <div>
@@ -816,9 +1144,23 @@ export default function MockTestManagementPage() {
                     required
                     value={cutoffMarks}
                     onChange={(e) => setCutoffMarks(Number(e.target.value))}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-bold"
                   />
                 </div>
+              </div>
+
+              {/* Dynamic Reshuffle Toggle */}
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="testDynamicToggle"
+                  checked={isDynamicReshuffle}
+                  onChange={(e) => setIsDynamicReshuffle(e.target.checked)}
+                  className="w-4 h-4 rounded text-purple-600"
+                />
+                <label htmlFor="testDynamicToggle" className="text-xs font-bold text-purple-950 dark:text-purple-200 cursor-pointer">
+                  ⚡ Enable Adaptive Reshuffle & Mastery Repeating for Students (Wrong answers continuously repeat; correct answers rotate)
+                </label>
               </div>
 
               {/* Subject-Wise & Topic-Wise Question Selection Section */}
@@ -827,12 +1169,12 @@ export default function MockTestManagementPage() {
                   <div>
                     <label className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-brand-700 dark:text-brand-400" />
-                      Select Questions (Subject & Topic Categorized)
+                      Question Selection (Subject & Topic Categorized)
                     </label>
                     <p className="text-[11px] text-slate-500">
                       {selectedQuestionIds.length > 0
                         ? `${selectedQuestionIds.length} question(s) selected for this test paper`
-                        : '0 selected — use 1-click Test Size Auto-Select below (e.g. 100 Qs or 180 Qs) or pick manually'}
+                        : '0 selected — use additive batch selector below (+50, +90, +100, +200) or pick manually'}
                     </p>
                   </div>
 
@@ -853,7 +1195,7 @@ export default function MockTestManagementPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Subject Tabs Header (Wrap enabled so Chemistry & all subjects are fully visible) */}
+                    {/* Subject Tabs Header */}
                     <div className="flex flex-wrap items-center gap-1.5 pb-1">
                       <button
                         type="button"
@@ -927,7 +1269,7 @@ export default function MockTestManagementPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {[50, 90, 100, 180, 200, 250, 300].map((limit) => (
+                        {[45, 50, 90, 100, 180, 200, 250, 300].map((limit) => (
                           <button
                             key={limit}
                             type="button"
@@ -995,125 +1337,78 @@ export default function MockTestManagementPage() {
                       </select>
                     </div>
 
-                    {/* Grouped Subject & Topic Accordion / List */}
-                    <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 p-2 space-y-3">
-                      {Object.entries(groupedQuestions)
-                        .filter(([sub]) => selectedSubjectFilter === 'all' || selectedSubjectFilter === sub)
-                        .map(([subject, topicsMap]) => {
-                          const matchingTopics = Object.entries(topicsMap).filter(([topic, qList]) => {
-                            if (selectedTopicFilter !== 'all' && selectedTopicFilter !== topic) return false;
-                            if (searchQuestionQuery) {
-                              return qList.some((q) => (q.question_text || '').toLowerCase().includes(searchQuestionQuery.toLowerCase()));
-                            }
-                            return true;
-                          });
+                    {/* Questions Accordion List */}
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-white dark:bg-slate-900">
+                      {Object.entries(groupedQuestions).map(([sub, topicsMap]) => {
+                        if (selectedSubjectFilter !== 'all' && selectedSubjectFilter !== sub) return null;
 
-                          if (matchingTopics.length === 0) return null;
-
-                          return (
-                            <div key={subject} className="space-y-2 pt-1">
-                              {/* Subject Header */}
-                              <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                                <div className="font-extrabold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                                  <BookOpen className="w-3.5 h-3.5 text-brand-700 dark:text-brand-400" />
-                                  {subject}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSelectAllSubject(subject)}
-                                  className="text-[11px] font-bold text-brand-700 dark:text-brand-400 hover:underline"
-                                >
-                                  Select All {subject}
-                                </button>
-                              </div>
-
-                              {/* Topic Groups */}
-                              {matchingTopics.map(([topic, qList]) => {
-                                const filteredQList = searchQuestionQuery
-                                  ? qList.filter((q) => (q.question_text || '').toLowerCase().includes(searchQuestionQuery.toLowerCase()))
-                                  : qList;
-
-                                if (filteredQList.length === 0) return null;
-
-                                const allTopicSelected = filteredQList.every((q) => selectedQuestionIds.includes(q._id));
-
-                                return (
-                                  <div key={topic} className="pl-2 border-l-2 border-brand-500/40 ml-2 space-y-1">
-                                    <div className="flex justify-between items-center py-1 px-2 bg-slate-50 dark:bg-slate-800/40 rounded text-xs">
-                                      <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                        <Folder className="w-3.5 h-3.5 text-amber-500" />
-                                        {topic} ({filteredQList.length})
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleSelectAllTopic(subject, topic, filteredQList)}
-                                        className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                                      >
-                                        {allTopicSelected ? 'Deselect Topic' : 'Select Topic'}
-                                      </button>
-                                    </div>
-
-                                    {/* Questions under Topic */}
-                                    <div className="space-y-1 pt-1">
-                                      {filteredQList.map((q) => {
-                                        const isSelected = selectedQuestionIds.includes(q._id);
-                                        return (
-                                          <div
-                                            key={q._id}
-                                            onClick={() => toggleQuestionSelection(q._id)}
-                                            className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                                              isSelected
-                                                ? 'bg-emerald-50/70 border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800'
-                                                : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                                            }`}
-                                          >
-                                            <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                                              {isSelected ? (
-                                                <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                              ) : (
-                                                <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                                              )}
-                                              <span className="line-clamp-2 font-medium text-slate-800 dark:text-slate-200">
-                                                {q.question_text}
-                                              </span>
-                                            </div>
-
-                                            <span
-                                              className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${
-                                                isSelected
-                                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                                              }`}
-                                            >
-                                              {isSelected ? 'Included' : 'Click to Add'}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                        return (
+                          <div key={sub} className="space-y-2">
+                            <div className="bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded text-[11px] font-extrabold text-slate-800 dark:text-slate-200 flex justify-between items-center">
+                              <span>📁 Subject: {sub}</span>
                             </div>
-                          );
-                        })}
+
+                            {Object.entries(topicsMap).map(([top, qList]) => {
+                              if (selectedTopicFilter !== 'all' && selectedTopicFilter !== top) return null;
+
+                              const filteredList = searchQuestionQuery.trim()
+                                ? qList.filter((q) => (q.question_text || '').toLowerCase().includes(searchQuestionQuery.toLowerCase()))
+                                : qList;
+
+                              if (filteredList.length === 0) return null;
+
+                              return (
+                                <div key={top} className="pl-2 border-l-2 border-slate-200 dark:border-slate-700 space-y-1 my-1">
+                                  <span className="text-[10px] font-bold text-slate-500">📖 Topic: {top} ({filteredList.length})</span>
+
+                                  {filteredList.map((q) => {
+                                    const isSelected = selectedQuestionIds.includes(q._id);
+                                    return (
+                                      <div
+                                        key={q._id}
+                                        onClick={() => handleToggleQuestion(q._id)}
+                                        className={`p-2 border rounded-lg cursor-pointer transition-all flex items-start gap-2 text-xs ${
+                                          isSelected
+                                            ? 'bg-blue-50 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700'
+                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <div className="mt-0.5">
+                                          {isSelected ? (
+                                            <CheckSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                          ) : (
+                                            <Square className="w-3.5 h-3.5 text-slate-400" />
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="line-clamp-2 text-slate-800 dark:text-slate-200">{q.question_text}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg"
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-brand-800 hover:bg-brand-900 text-white font-bold rounded-lg disabled:opacity-50"
+                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg"
                 >
                   {submitting ? 'Publishing...' : 'Publish Mock Test'}
                 </button>
@@ -1123,82 +1418,75 @@ export default function MockTestManagementPage() {
         </div>
       )}
 
-      {/* Create Weekly DPP Modal */}
+      {/* CREATE WEEKLY DPP MODAL */}
       {showAddDppModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-emerald-500" /> Configure New Weekly DPP
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowAddDppModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              >
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-xl w-full shadow-2xl my-8 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>📅</span> Configure Weekly Daily Practice Paper
+                </h3>
+                <p className="text-xs text-slate-500">Pick revision questions and duration for students in this track.</p>
+              </div>
+              <button onClick={() => setShowAddDppModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-xs font-semibold">
-                {error}
-              </div>
-            )}
+            {error && <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 text-xs rounded-lg">{error}</div>}
 
-            <form onSubmit={handleCreateDpp} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Course Track</label>
-                  <select
-                    value={dppCourseId}
-                    onChange={(e) => setDppCourseId(e.target.value)}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
-                  >
-                    {courses.map((c) => (
-                      <option key={c._id} value={c._id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Weekly DPP Title</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Week 31 Mega Revision DPP"
-                    value={dppTitle}
-                    onChange={(e) => setDppTitle(e.target.value)}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Test Duration (Minutes)</label>
-                  <input
-                    type="number"
-                    required
-                    min={5}
-                    max={180}
-                    value={dppDurationMinutes}
-                    onChange={(e) => setDppDurationMinutes(Number(e.target.value))}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
-                  />
-                </div>
+            <form onSubmit={handleCreateDpp} className="flex-1 flex flex-col space-y-4 text-xs overflow-y-auto pr-1">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Course</label>
+                <select
+                  value={dppCourseId}
+                  onChange={(e) => setDppCourseId(e.target.value)}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                >
+                  {courses.map((c) => (
+                    <option key={c._id || c.id} value={c._id || c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* Question Picker (Subject & Topic Categorized) */}
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Weekly DPP Title</label>
+                <input
+                  type="text"
+                  required
+                  value={dppTitle}
+                  onChange={(e) => setDppTitle(e.target.value)}
+                  placeholder="e.g. Week 34 Master DPP - Physics & Chemistry"
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Duration (Minutes)</label>
+                <input
+                  type="number"
+                  required
+                  value={dppDurationMinutes}
+                  onChange={(e) => setDppDurationMinutes(Number(e.target.value))}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-bold"
+                />
+              </div>
+
+              {/* Subject-Wise & Topic-Wise Question Selection Section for DPP */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/60 space-y-3">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                   <div>
                     <label className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-emerald-600" />
-                      Select Weekly Questions (Subject & Topic Categorized)
+                      Select DPP Questions
                     </label>
                     <p className="text-[11px] text-slate-500">
                       {selectedDppQuestionIds.length > 0
-                        ? `${selectedDppQuestionIds.length} question(s) selected for this Weekly DPP`
-                        : 'Pick specific questions by subject and topic for this paper'}
+                        ? `${selectedDppQuestionIds.length} question(s) selected for this DPP`
+                        : '0 selected — use additive batch buttons (+10, +25, +50) or pick manually'}
                     </p>
                   </div>
 
@@ -1219,7 +1507,7 @@ export default function MockTestManagementPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Subject Tabs Header (Wrap enabled) */}
+                    {/* Subject Tabs Header */}
                     <div className="flex flex-wrap items-center gap-1.5 pb-1">
                       <button
                         type="button"
@@ -1334,13 +1622,13 @@ export default function MockTestManagementPage() {
                       </div>
                     </div>
 
-                    {/* Filter controls: Search & Topic dropdown */}
+                    {/* Filter controls: Topic & Search */}
                     <div className="flex flex-col sm:flex-row gap-2">
                       <div className="relative flex-1">
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                         <input
                           type="text"
-                          placeholder="Search question text..."
+                          placeholder="Search DPP question text..."
                           value={dppSearchQuery}
                           onChange={(e) => setDppSearchQuery(e.target.value)}
                           className="w-full text-xs pl-8 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
@@ -1361,160 +1649,83 @@ export default function MockTestManagementPage() {
                       </select>
                     </div>
 
-                    {/* Grouped Subject & Topic Accordion */}
-                    <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 p-2 space-y-3">
-                      {Object.entries(groupedDppQuestions)
-                        .filter(([sub]) => dppSubjectFilter === 'all' || dppSubjectFilter === sub)
-                        .map(([subject, topicsMap]) => {
-                          const matchingTopics = Object.entries(topicsMap).filter(([topic, qList]) => {
-                            if (dppTopicFilter !== 'all' && dppTopicFilter !== topic) return false;
-                            if (dppSearchQuery) {
-                              return qList.some((q) => (q.question_text || '').toLowerCase().includes(dppSearchQuery.toLowerCase()));
-                            }
-                            return true;
-                          });
+                    {/* Questions Accordion List */}
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-white dark:bg-slate-900">
+                      {Object.entries(groupedDppQuestions).map(([sub, topicsMap]) => {
+                        if (dppSubjectFilter !== 'all' && dppSubjectFilter !== sub) return null;
 
-                          if (matchingTopics.length === 0) return null;
-
-                          return (
-                            <div key={subject} className="space-y-2 pt-1">
-                              <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                                <div className="font-extrabold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                                  <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
-                                  {subject}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleDppSelectAllSubject(subject)}
-                                  className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
-                                >
-                                  Select All {subject}
-                                </button>
-                              </div>
-
-                              {matchingTopics.map(([topic, qList]) => {
-                                const filteredQList = dppSearchQuery
-                                  ? qList.filter((q) => (q.question_text || '').toLowerCase().includes(dppSearchQuery.toLowerCase()))
-                                  : qList;
-
-                                if (filteredQList.length === 0) return null;
-
-                                const allTopicSelected = filteredQList.every((q) => selectedDppQuestionIds.includes(q._id));
-
-                                return (
-                                  <div key={topic} className="pl-2 border-l-2 border-emerald-500/40 ml-2 space-y-1">
-                                    <div className="flex justify-between items-center py-1 px-2 bg-slate-50 dark:bg-slate-800/40 rounded text-xs">
-                                      <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                        <Folder className="w-3.5 h-3.5 text-amber-500" />
-                                        {topic} ({filteredQList.length})
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleDppSelectAllTopic(subject, topic, filteredQList)}
-                                        className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                                      >
-                                        {allTopicSelected ? 'Deselect Topic' : 'Select Topic'}
-                                      </button>
-                                    </div>
-
-                                    <div className="space-y-1 pt-1">
-                                      {filteredQList.map((q) => {
-                                        const isSelected = selectedDppQuestionIds.includes(q._id);
-                                        return (
-                                          <div
-                                            key={q._id}
-                                            onClick={() => {
-                                              if (isSelected) {
-                                                setSelectedDppQuestionIds(selectedDppQuestionIds.filter((id) => id !== q._id));
-                                              } else {
-                                                setSelectedDppQuestionIds([...selectedDppQuestionIds, q._id]);
-                                              }
-                                            }}
-                                            className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                                              isSelected
-                                                ? 'bg-emerald-50/80 border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800'
-                                                : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                                            }`}
-                                          >
-                                            <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                                              {isSelected ? (
-                                                <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                              ) : (
-                                                <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                                              )}
-                                              <span className="line-clamp-2 font-medium text-slate-800 dark:text-slate-200">
-                                                {q.question_text}
-                                              </span>
-                                            </div>
-                                            <span
-                                              className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${
-                                                isSelected
-                                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                                              }`}
-                                            >
-                                              {isSelected ? 'Included' : 'Click to Add'}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                        return (
+                          <div key={sub} className="space-y-2">
+                            <div className="bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded text-[11px] font-extrabold text-emerald-800 dark:text-emerald-200 flex justify-between items-center">
+                              <span>📁 Subject: {sub}</span>
                             </div>
-                          );
-                        })}
+
+                            {Object.entries(topicsMap).map(([top, qList]) => {
+                              if (dppTopicFilter !== 'all' && dppTopicFilter !== top) return null;
+
+                              const filteredList = dppSearchQuery.trim()
+                                ? qList.filter((q) => (q.question_text || '').toLowerCase().includes(dppSearchQuery.toLowerCase()))
+                                : qList;
+
+                              if (filteredList.length === 0) return null;
+
+                              return (
+                                <div key={top} className="pl-2 border-l-2 border-emerald-200 dark:border-emerald-700 space-y-1 my-1">
+                                  <span className="text-[10px] font-bold text-slate-500">📖 Topic: {top} ({filteredList.length})</span>
+
+                                  {filteredList.map((q) => {
+                                    const isSelected = selectedDppQuestionIds.includes(q._id);
+                                    return (
+                                      <div
+                                        key={q._id}
+                                        onClick={() => handleToggleDppQuestion(q._id)}
+                                        className={`p-2 border rounded-lg cursor-pointer transition-all flex items-start gap-2 text-xs ${
+                                          isSelected
+                                            ? 'bg-emerald-50 border-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-700'
+                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <div className="mt-0.5">
+                                          {isSelected ? (
+                                            <CheckSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                          ) : (
+                                            <Square className="w-3.5 h-3.5 text-slate-400" />
+                                          )}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="line-clamp-2 text-slate-800 dark:text-slate-200">{q.question_text}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddDppModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg"
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg disabled:opacity-50"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm"
                 >
                   {submitting ? 'Publishing...' : 'Publish Weekly DPP'}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deletingId && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-sm w-full shadow-lg text-center">
-            <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-1">Deactivate Mock Test</h3>
-            <p className="text-xs text-slate-500 mb-6">
-              Are you sure you want to deactivate this test? Students will no longer see it on their dashboard.
-            </p>
-            <div className="flex justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setDeletingId(null)}
-                className="px-4 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-300"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteTest(deletingId)}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm"
-              >
-                Yes, Deactivate
-              </button>
-            </div>
           </div>
         </div>
       )}
