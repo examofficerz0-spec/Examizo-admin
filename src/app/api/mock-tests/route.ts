@@ -12,7 +12,7 @@ export async function GET() {
       const d1Tests = await queryD1('SELECT * FROM mock_tests WHERE is_active = 1 ORDER BY created_at DESC');
       const d1Courses = await queryD1('SELECT * FROM courses');
 
-      if (d1Tests && d1Tests.length > 0) {
+      if (d1Tests !== null && d1Tests !== undefined) {
         const formatted = d1Tests.map((m: any) => {
           let qIds: string[] = [];
           try {
