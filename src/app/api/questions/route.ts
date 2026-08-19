@@ -107,18 +107,48 @@ export async function POST(req: Request) {
 
     const targetNormText = normalizeQuestionText(question_text);
     const targetTopicNorm = (topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
+    const targetOptsNorm = Array.isArray(options)
+      ? options
+          .map((o: any) =>
+            String(o ?? '')
+              .toLowerCase()
+              .replace(/^(?:\(?\s*[a-da-d1-4]\s*\)?[\.\)\:\-]\s*)/i, '')
+              .replace(/[^\w\s]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+          )
+          .filter(Boolean)
+          .sort()
+          .join('|')
+      : '';
 
-    // 1. Check duplicate in D1 strictly within Course + Topic + Question Text
+    // 1. Check duplicate in D1 strictly within Course + Topic + Question Text + Options
     try {
-      const existingD1 = await queryD1('SELECT id, topic_tag, question_text FROM questions WHERE course_id = ? AND is_active = 1', [cleanCourseId]);
+      const existingD1 = await queryD1('SELECT id, topic_tag, question_text, options_json FROM questions WHERE course_id = ? AND is_active = 1', [cleanCourseId]);
       if (Array.isArray(existingD1)) {
         const isDup = existingD1.some((q: any) => {
           const qTopicNorm = (q.topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
           const qTextNorm = normalizeQuestionText(q.question_text);
-          return qTopicNorm === targetTopicNorm && qTextNorm === targetNormText;
+          let qOpts: any[] = [];
+          try { qOpts = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : (q.options_json || []); } catch (e) {}
+          const qOptsNorm = Array.isArray(qOpts)
+            ? qOpts
+                .map((o: any) =>
+                  String(o ?? '')
+                    .toLowerCase()
+                    .replace(/^(?:\(?\s*[a-da-d1-4]\s*\)?[\.\)\:\-]\s*)/i, '')
+                    .replace(/[^\w\s]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                )
+                .filter(Boolean)
+                .sort()
+                .join('|')
+            : '';
+          return qTopicNorm === targetTopicNorm && qTextNorm === targetNormText && qOptsNorm === targetOptsNorm;
         });
         if (isDup) {
-          return NextResponse.json({ error: 'A duplicate question with the same statement already exists in this topic.' }, { status: 409 });
+          return NextResponse.json({ error: 'A duplicate question with the same statement and options already exists in this topic.' }, { status: 409 });
         }
       }
     } catch (d1Err) {}
@@ -130,11 +160,25 @@ export async function POST(req: Request) {
       const cId = typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.name : q.course_id;
       const qTopicNorm = (q.topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
       const qTextNorm = normalizeQuestionText(q.question_text);
-      return String(cId) === cleanCourseId && qTopicNorm === targetTopicNorm && qTextNorm === targetNormText;
+      const qOptsNorm = Array.isArray(q.options)
+        ? q.options
+            .map((o: any) =>
+              String(o ?? '')
+                .toLowerCase()
+                .replace(/^(?:\(?\s*[a-da-d1-4]\s*\)?[\.\)\:\-]\s*)/i, '')
+                .replace(/[^\w\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+            )
+            .filter(Boolean)
+            .sort()
+            .join('|')
+        : '';
+      return String(cId) === cleanCourseId && qTopicNorm === targetTopicNorm && qTextNorm === targetNormText && qOptsNorm === targetOptsNorm;
     });
 
     if (isDupLocal) {
-      return NextResponse.json({ error: 'A duplicate question with the same statement already exists in this topic.' }, { status: 409 });
+      return NextResponse.json({ error: 'A duplicate question with the same statement and options already exists in this topic.' }, { status: 409 });
     }
 
     let cleanOptions: string[] = [];

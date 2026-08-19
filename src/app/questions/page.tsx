@@ -769,14 +769,15 @@ export default function QuestionManagementPage() {
           const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
           const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
 
-          let rowTopic = selectedTopic || (topicKey && row[topicKey] !== undefined ? String(row[topicKey]).trim() : '');
-          if (!rowTopic && qText && subjKey && row[subjKey] && row[subjKey] !== rowSubject) {
+          const explicitRowTopic = topicKey && row[topicKey] !== undefined && row[topicKey] !== null ? String(row[topicKey]).trim() : '';
+          let rowTopic = explicitRowTopic;
+          if (!rowTopic && qText && subjKey && row[subjKey] && String(row[subjKey]).trim() !== rowSubject) {
             rowTopic = String(row[subjKey]).trim();
           }
           if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
             rowTopic = sheetName;
           }
-          if (!rowTopic) rowTopic = 'General Module';
+          if (!rowTopic) rowTopic = selectedTopic || 'General Module';
 
           if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
             rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
@@ -801,14 +802,14 @@ export default function QuestionManagementPage() {
         }
       }
 
-      // Helper to compute deduplication fingerprint: Course + Subject + Topic + Question Text
+      // Helper to compute deduplication fingerprint: Course + Subject + Topic + Question Text + Options
       const computeQFp = (q: any) => {
         const rawC = typeof q.course_id === 'object' ? (q.course_id?._id || q.course_id?.id || q.course_id?.name || '') : String(q.course_id || selectedCourseId || '');
         const cleanC = String(rawC).trim().toLowerCase();
 
         const tag = String(q.topic_tag || '').trim().toLowerCase();
-        let sub = String(q.subject || selectedSubject || (tag.includes('-') ? tag.split('-')[0].trim() : '')).trim().toLowerCase().replace(/[^\w\s]/g, '');
-        let top = String(q.topic || selectedTopic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag)).trim().toLowerCase().replace(/[^\w\s]/g, '');
+        let sub = String(q.subject || (tag.includes('-') ? tag.split('-')[0].trim() : selectedSubject || '')).trim().toLowerCase().replace(/[^\w\s]/g, '');
+        let top = String(q.topic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : selectedTopic || tag)).trim().toLowerCase().replace(/[^\w\s]/g, '');
         if (!sub) sub = 'general';
         if (!top) top = 'general';
 
@@ -818,7 +819,23 @@ export default function QuestionManagementPage() {
           .replace(/[^\w\s]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
-        return `${cleanC}:::${sub}:::${top}:::${text}`;
+
+        const optsKey = Array.isArray(q.options)
+          ? q.options
+              .map((o: any) =>
+                String(o ?? '')
+                  .toLowerCase()
+                  .replace(/^(?:\(?\s*[a-da-d1-4]\s*\)?[\.\)\:\-]\s*)/i, '')
+                  .replace(/[^\w\s]/g, '')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+              )
+              .filter(Boolean)
+              .sort()
+              .join('|')
+          : '';
+
+        return `${cleanC}:::${sub}:::${top}:::${text}:::${optsKey}`;
       };
 
       // 1. Build fingerprint set of ALL existing questions in database for deduplication
@@ -1009,18 +1026,19 @@ export default function QuestionManagementPage() {
       const resolveQTopicTag = (q: any) => {
         const finalSub = resolveQSubject(q);
         
-        let rawTopic = selectedTopic || '';
-        if (!rawTopic) {
-          if (q.topic && String(q.topic).trim()) {
-            rawTopic = String(q.topic).trim();
-          } else if (q.topic_tag && String(q.topic_tag).trim()) {
-            const t = String(q.topic_tag).trim();
-            if (t.includes('-')) {
-              rawTopic = t.split('-').slice(1).join('-').trim() || t.split('-')[0].trim();
-            } else {
-              rawTopic = t;
-            }
+        let rawTopic = '';
+        if (q.topic && String(q.topic).trim()) {
+          rawTopic = String(q.topic).trim();
+        } else if (q.topic_tag && String(q.topic_tag).trim()) {
+          const t = String(q.topic_tag).trim();
+          if (t.includes('-')) {
+            rawTopic = t.split('-').slice(1).join('-').trim() || t.split('-')[0].trim();
+          } else {
+            rawTopic = t;
           }
+        }
+        if (!rawTopic) {
+          rawTopic = selectedTopic || 'General Module';
         }
         
         if (!rawTopic || ['general', 'general module'].includes(rawTopic.toLowerCase())) {

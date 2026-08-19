@@ -145,7 +145,23 @@ export async function POST(req: Request) {
       if (!top) top = 'general';
 
       const text = normalizeQuestionText(q.question_text || '');
-      return `${cId}:::${sub}:::${top}:::${text}`;
+      
+      const opts = Array.isArray(q.options)
+        ? q.options
+            .map((o: any) =>
+              String(o ?? '')
+                .toLowerCase()
+                .replace(/^(?:\(?\s*[a-da-d1-4]\s*\)?[\.\)\:\-]\s*)/i, '')
+                .replace(/[^\w\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+            )
+            .filter(Boolean)
+            .sort()
+            .join('|')
+        : '';
+
+      return `${cId}:::${sub}:::${top}:::${text}:::${opts}`;
     };
 
     // Load existing question fingerprints scoped strictly to Course + Subject + Topic + Question Text
