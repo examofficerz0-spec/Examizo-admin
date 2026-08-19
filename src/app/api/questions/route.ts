@@ -106,26 +106,19 @@ export async function POST(req: Request) {
     };
 
     const targetNormText = normalizeQuestionText(question_text);
-    const targetTopic = (topic_tag || '').trim().toLowerCase();
-    const targetOptsNorm = Array.isArray(options)
-      ? options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
-      : '';
+    const targetTopicNorm = (topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
 
-    // 1. Check duplicate in D1 strictly within Course + Subject + Topic + Options
+    // 1. Check duplicate in D1 strictly within Course + Topic + Question Text
     try {
-      const existingD1 = await queryD1('SELECT id, topic_tag, question_text, options_json FROM questions WHERE course_id = ? AND is_active = 1', [cleanCourseId]);
+      const existingD1 = await queryD1('SELECT id, topic_tag, question_text FROM questions WHERE course_id = ? AND is_active = 1', [cleanCourseId]);
       if (Array.isArray(existingD1)) {
         const isDup = existingD1.some((q: any) => {
-          const qTopic = (q.topic_tag || '').trim().toLowerCase();
+          const qTopicNorm = (q.topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
           const qTextNorm = normalizeQuestionText(q.question_text);
-          let qOpts: any[] = [];
-          try { qOpts = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : (q.options_json || []); } catch (e) {}
-          const qOptsNorm = qOpts.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|');
-
-          return qTopic === targetTopic && qTextNorm === targetNormText && qOptsNorm === targetOptsNorm;
+          return qTopicNorm === targetTopicNorm && qTextNorm === targetNormText;
         });
         if (isDup) {
-          return NextResponse.json({ error: 'A duplicate question with the same statement and options already exists in this topic.' }, { status: 409 });
+          return NextResponse.json({ error: 'A duplicate question with the same statement already exists in this topic.' }, { status: 409 });
         }
       }
     } catch (d1Err) {}
@@ -135,16 +128,13 @@ export async function POST(req: Request) {
     const isDupLocal = (db.questions || []).some((q) => {
       if (q.is_active === false) return false;
       const cId = typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.name : q.course_id;
-      const qTopic = (q.topic_tag || '').trim().toLowerCase();
+      const qTopicNorm = (q.topic_tag || '').trim().toLowerCase().replace(/[^\w\s]/g, '');
       const qTextNorm = normalizeQuestionText(q.question_text);
-      const qOptsNorm = Array.isArray(q.options)
-        ? q.options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
-        : '';
-      return String(cId) === cleanCourseId && qTopic === targetTopic && qTextNorm === targetNormText && qOptsNorm === targetOptsNorm;
+      return String(cId) === cleanCourseId && qTopicNorm === targetTopicNorm && qTextNorm === targetNormText;
     });
 
     if (isDupLocal) {
-      return NextResponse.json({ error: 'A duplicate question with the same statement and options already exists in this topic.' }, { status: 409 });
+      return NextResponse.json({ error: 'A duplicate question with the same statement already exists in this topic.' }, { status: 409 });
     }
 
     let cleanOptions: string[] = [];

@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   Search,
   Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 
 const getInitialQuestionsCache = () => {
@@ -78,6 +79,9 @@ export default function QuestionManagementPage() {
   const [excelFileName, setExcelFileName] = useState('');
   const [excelParsing, setExcelParsing] = useState(false);
   const [parsedExcelQuestions, setParsedExcelQuestions] = useState<any[]>([]);
+  const [excelTotalParsed, setExcelTotalParsed] = useState<number>(0);
+  const [excelDupsInDbCount, setExcelDupsInDbCount] = useState<number>(0);
+  const [excelDupsInFileCount, setExcelDupsInFileCount] = useState<number>(0);
   const [excelError, setExcelError] = useState('');
   const [bulkText, setBulkText] = useState('');
   const [bulkFormQuestions, setBulkFormQuestions] = useState<any[]>([
@@ -797,41 +801,64 @@ export default function QuestionManagementPage() {
         }
       }
 
-      // Deduplicate questions from Excel file strictly within Same Course + Same Subject + Same Topic + Question Text + Options
-      const seenFingerprints = new Set<string>();
-      const uniqueParsedQuestions: any[] = [];
-      let excelDupsCount = 0;
+      // Helper to compute deduplication fingerprint: Course + Subject + Topic + Question Text
+      const computeQFp = (q: any) => {
+        const rawC = typeof q.course_id === 'object' ? (q.course_id?._id || q.course_id?.id || q.course_id?.name || '') : String(q.course_id || selectedCourseId || '');
+        const cleanC = String(rawC).trim().toLowerCase();
 
-      for (const q of allParsedQuestions) {
-        const cId = String(q.course_id || selectedCourseId || '').trim().toLowerCase();
-        const sub = String(q.subject || selectedSubject || '').trim().toLowerCase();
-        const top = String(q.topic || selectedTopic || '').trim().toLowerCase();
+        const tag = String(q.topic_tag || '').trim().toLowerCase();
+        let sub = String(q.subject || selectedSubject || (tag.includes('-') ? tag.split('-')[0].trim() : '')).trim().toLowerCase().replace(/[^\w\s]/g, '');
+        let top = String(q.topic || selectedTopic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag)).trim().toLowerCase().replace(/[^\w\s]/g, '');
+        if (!sub) sub = 'general';
+        if (!top) top = 'general';
+
         const text = String(q.question_text || '')
           .toLowerCase()
           .replace(/^(?:q(?:uestion)?[\s\.\:\-]*\d*[\s\.\:\-]+|\d+[\s\.\:\-]+)/i, '')
           .replace(/[^\w\s]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
-        const optsKey = Array.isArray(q.options)
-          ? q.options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
-          : '';
+        return `${cleanC}:::${sub}:::${top}:::${text}`;
+      };
 
-        const norm = `${cId}:::${sub}:::${top}:::${text}:::${optsKey}`;
-        if (seenFingerprints.has(norm)) {
-          excelDupsCount++;
+      // 1. Build fingerprint set of ALL existing questions in database for deduplication
+      const existingDbFingerprints = new Set<string>();
+      (questions || []).forEach((eq: any) => {
+        if (eq.is_active !== false) {
+          existingDbFingerprints.add(computeQFp(eq));
+        }
+      });
+
+      // 2. Deduplicate questions from Excel file against file duplicates AND database duplicates
+      const seenInFile = new Set<string>();
+      const uniqueParsedQuestions: any[] = [];
+      let fileDups = 0;
+      let dbDups = 0;
+
+      for (const q of allParsedQuestions) {
+        const fp = computeQFp(q);
+
+        if (seenInFile.has(fp)) {
+          fileDups++;
           continue;
         }
-        seenFingerprints.add(norm);
+        seenInFile.add(fp);
+
+        if (existingDbFingerprints.has(fp)) {
+          dbDups++;
+          continue;
+        }
+
         uniqueParsedQuestions.push(q);
       }
 
-      console.log(`[ExcelParser] Multi-sheet parsing finished. Total questions: ${uniqueParsedQuestions.length} (Duplicates removed: ${excelDupsCount}). Sheets:`, sheetStats);
+      setExcelTotalParsed(allParsedQuestions.length);
+      setExcelDupsInFileCount(fileDups);
+      setExcelDupsInDbCount(dbDups);
+      setParsedExcelQuestions(uniqueParsedQuestions);
 
-      if (uniqueParsedQuestions.length === 0) {
+      if (allParsedQuestions.length === 0) {
         setExcelError('No valid questions could be extracted from the file. Please check column headers (Question, Option A, Option B, Option C, Option D, Answer).');
-        setParsedExcelQuestions([]);
-      } else {
-        setParsedExcelQuestions(uniqueParsedQuestions);
       }
     } catch (err: any) {
       setExcelError(err.message || 'Failed to parse Excel/CSV file');
@@ -1081,6 +1108,9 @@ export default function QuestionManagementPage() {
       setShowBulkModal(false);
       setExcelFileName('');
       setParsedExcelQuestions([]);
+      setExcelTotalParsed(0);
+      setExcelDupsInDbCount(0);
+      setExcelDupsInFileCount(0);
       setExcelError('');
       setBulkText('');
 
@@ -1965,13 +1995,22 @@ export default function QuestionManagementPage() {
                     </div>
                   ) : (
                     <div className="flex-1 flex flex-col min-h-0 space-y-3">
-                      <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-800 dark:text-slate-200">
-                            Parsed {parsedExcelQuestions.length} Questions from &quot;{excelFileName}&quot;
-                          </span>
+                      {/* Top File Summary Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 gap-2">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                              &quot;{excelFileName}&quot;
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200">
+                              {excelTotalParsed} rows parsed
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Target Topic: <strong className="text-slate-800 dark:text-slate-200">{selectedSubject}</strong> ➔ <strong className="text-slate-800 dark:text-slate-200">{selectedTopic || 'General'}</strong>
+                          </p>
                         </div>
-                        <label className="cursor-pointer px-3 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold rounded text-xs">
+                        <label className="cursor-pointer px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold rounded text-xs shrink-0 text-center">
                           Change File
                           <input
                             type="file"
@@ -1982,50 +2021,83 @@ export default function QuestionManagementPage() {
                         </label>
                       </div>
 
-                      <div className="flex-1 overflow-y-auto space-y-3 max-h-[40vh] pr-1">
-                        {parsedExcelQuestions.map((q: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2"
-                          >
-                            <div className="flex justify-between items-start">
-                              <span className="font-bold text-slate-900 dark:text-slate-100">
-                                Q{idx + 1}. {q.question_text}
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold rounded shrink-0 ml-2">
-                                {q.topic_tag}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                              {q.options.map((opt: string, optIdx: number) => {
-                                const isCorrect = q.correct_option === optIdx;
-                                return (
-                                  <div
-                                    key={optIdx}
-                                    className={`p-1.5 rounded border ${isCorrect
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 font-bold'
-                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                                      }`}
-                                  >
-                                    <span className="font-mono mr-1">
-                                      {String.fromCharCode(65 + optIdx)}:
-                                    </span>
-                                    {opt}
-                                    {isCorrect && <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓ (Answer)</span>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {q.explanation && (
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                                Explanation: {q.explanation}
-                              </p>
+                      {/* Duplicate detection feedback banner */}
+                      {(excelDupsInDbCount > 0 || excelDupsInFileCount > 0) && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-lg text-xs space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-200">
+                            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <span>Duplicate Questions Detected &amp; Filtered</span>
+                          </div>
+                          <div className="text-[11px] text-amber-700 dark:text-amber-300 space-y-0.5">
+                            {excelDupsInDbCount > 0 && (
+                              <p>• <strong>{excelDupsInDbCount}</strong> question(s) already exist in the Question Bank under this Topic and were automatically removed.</p>
+                            )}
+                            {excelDupsInFileCount > 0 && (
+                              <p>• <strong>{excelDupsInFileCount}</strong> repeated question(s) within the Excel file were deduplicated.</p>
                             )}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
+
+                      {parsedExcelQuestions.length === 0 ? (
+                        <div className="p-6 bg-slate-50 dark:bg-slate-800/40 border border-dashed border-amber-300 dark:border-amber-700 rounded-xl text-center space-y-2 flex-1 flex flex-col items-center justify-center">
+                          <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                            <CheckCircle2 className="w-6 h-6" />
+                          </div>
+                          <h4 className="font-bold text-slate-900 dark:text-white text-sm">All Questions Already Exist</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+                            All {excelTotalParsed} question(s) from &quot;{excelFileName}&quot; already exist in the database for <strong>{selectedSubject} ➔ {selectedTopic || 'General'}</strong>. No duplicate questions will be added.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex-1 overflow-y-auto space-y-3 max-h-[40vh] pr-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 px-1">
+                            <span>{parsedExcelQuestions.length} New Unique Questions Ready to Import</span>
+                          </div>
+                          {parsedExcelQuestions.map((q: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2"
+                            >
+                              <div className="flex justify-between items-start">
+                                <span className="font-bold text-slate-900 dark:text-slate-100">
+                                  Q{idx + 1}. {q.question_text}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold rounded shrink-0 ml-2">
+                                  {q.topic_tag}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                {q.options.map((opt: string, optIdx: number) => {
+                                  const isCorrect = q.correct_option === optIdx;
+                                  return (
+                                    <div
+                                      key={optIdx}
+                                      className={`p-1.5 rounded border ${isCorrect
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 font-bold'
+                                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                                        }`}
+                                    >
+                                      <span className="font-mono mr-1">
+                                        {String.fromCharCode(65 + optIdx)}:
+                                      </span>
+                                      {opt}
+                                      {isCorrect && <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓ (Answer)</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {q.explanation && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                                  Explanation: {q.explanation}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2116,7 +2188,7 @@ export default function QuestionManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || (bulkMode === 'excel' && parsedExcelQuestions.length === 0)}
                   className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg disabled:opacity-50 shadow-xs flex items-center gap-2"
                 >
                   {submitting ? (
@@ -2125,7 +2197,9 @@ export default function QuestionManagementPage() {
                       <span>{bulkUploadProgress ? `Uploading (${bulkUploadProgress.percent}%)...` : 'Uploading Questions...'}</span>
                     </>
                   ) : (
-                    'Upload Question Batch'
+                    bulkMode === 'excel' && parsedExcelQuestions.length === 0
+                      ? 'No New Questions to Upload'
+                      : 'Upload Question Batch'
                   )}
                 </button>
               </div>

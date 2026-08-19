@@ -84,7 +84,7 @@ export async function POST(req: Request) {
 
       const rawCourse = q.course_id || targetCourseId;
       const cleanCourseId = typeof rawCourse === 'object' && rawCourse
-        ? String(rawCourse._id || rawCourse.id || '')
+        ? String(rawCourse._id || rawCourse.id || rawCourse.name || '')
         : String(rawCourse || 'course_jee_2027');
 
       preparedQuestions.push({
@@ -92,6 +92,7 @@ export async function POST(req: Request) {
         id: generateId(),
         course_id: cleanCourseId,
         subject: subj,
+        topic: chap,
         topic_tag: topicTag,
         question_text: qText,
         options: opts,
@@ -107,23 +108,51 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid questions found in bulk upload batch.' }, { status: 400 });
     }
 
+    // Load Course lookups for consistent ID/Name mapping
+    const courseLookup = new Map<string, string>();
+    try {
+      const d1Courses = await queryD1('SELECT id, name FROM courses');
+      if (Array.isArray(d1Courses)) {
+        d1Courses.forEach((c: any) => {
+          const idKey = String(c.id || '').trim().toLowerCase();
+          const nameKey = String(c.name || '').trim().toLowerCase();
+          if (idKey) courseLookup.set(idKey, idKey);
+          if (nameKey) courseLookup.set(nameKey, idKey);
+        });
+      }
+    } catch (cErr) {}
+
+    const db = readSharedDb();
+    if (Array.isArray(db.courses)) {
+      db.courses.forEach((c) => {
+        const idKey = String(c._id || c.id || '').trim().toLowerCase();
+        const nameKey = String(c.name || '').trim().toLowerCase();
+        if (idKey) courseLookup.set(idKey, idKey);
+        if (nameKey) courseLookup.set(nameKey, idKey);
+      });
+    }
+
     const computeFp = (q: any): string => {
-      const cId = String(q.course_id || '').trim().toLowerCase();
+      const rawC = typeof q.course_id === 'object' ? (q.course_id?._id || q.course_id?.id || q.course_id?.name || '') : String(q.course_id || '');
+      const cleanC = String(rawC).trim().toLowerCase();
+      const cId = courseLookup.get(cleanC) || cleanC;
+
       const tag = String(q.topic_tag || '').trim().toLowerCase();
-      const sub = String(q.subject || (tag.includes('-') ? tag.split('-')[0].trim() : '')).trim().toLowerCase();
-      const top = String(q.topic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag)).trim().toLowerCase();
+      let sub = String(q.subject || (tag.includes('-') ? tag.split('-')[0].trim() : '')).trim().toLowerCase().replace(/[^\w\s]/g, '');
+      let top = String(q.topic || (tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag)).trim().toLowerCase().replace(/[^\w\s]/g, '');
+      
+      if (!sub) sub = 'general';
+      if (!top) top = 'general';
+
       const text = normalizeQuestionText(q.question_text || '');
-      const opts = Array.isArray(q.options)
-        ? q.options.map((o: any) => String(o ?? '').toLowerCase().replace(/[^\w\s]/g, '').trim()).sort().join('|')
-        : '';
-      return `${cId}:::${sub}:::${top}:::${text}:::${opts}`;
+      return `${cId}:::${sub}:::${top}:::${text}`;
     };
 
-    // Load existing question fingerprints scoped strictly to Course + Subject + Topic + Options
+    // Load existing question fingerprints scoped strictly to Course + Subject + Topic + Question Text
     const existingFingerprints = new Set<string>();
 
     try {
-      const d1Existing = await queryD1('SELECT course_id, subject, topic_tag, question_text, options_json FROM questions WHERE is_active = 1');
+      const d1Existing = await queryD1('SELECT id, course_id, topic_tag, question_text, options_json FROM questions WHERE is_active = 1');
       if (Array.isArray(d1Existing)) {
         d1Existing.forEach((q: any) => {
           let opts: any[] = [];
@@ -131,14 +160,14 @@ export async function POST(req: Request) {
           existingFingerprints.add(computeFp({ ...q, options: opts }));
         });
       }
-    } catch (d1QueryErr) {}
+    } catch (d1QueryErr) {
+      console.warn('[Bulk D1 Existing Query Warning]:', d1QueryErr);
+    }
 
-    const db = readSharedDb();
     if (Array.isArray(db.questions)) {
       db.questions.forEach((q) => {
         if (q.is_active !== false) {
-          const cId = typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.name : q.course_id;
-          existingFingerprints.add(computeFp({ ...q, course_id: cId }));
+          existingFingerprints.add(computeFp(q));
         }
       });
     }
@@ -162,14 +191,14 @@ export async function POST(req: Request) {
         success: true,
         count: 0,
         skippedDuplicates: skippedDuplicatesCount,
-        message: `All ${skippedDuplicatesCount} question(s) already exist in the Question Bank (duplicate questions skipped).`,
+        message: `All ${skippedDuplicatesCount} question(s) already exist in the Question Bank for this topic (duplicates skipped).`,
       });
     }
 
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       let d1InsertedCount = 0;
-      const CHUNK_SIZE = 50; // Optimized multi-row INSERT batch size (50 * 11 = 550 params, well within SQLite limits)
+      const CHUNK_SIZE = 50; // Optimized multi-row INSERT batch size
 
       for (let i = 0; i < deduplicatedQuestions.length; i += CHUNK_SIZE) {
         const chunk = deduplicatedQuestions.slice(i, i + CHUNK_SIZE);
