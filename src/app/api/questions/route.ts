@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { Question, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1 } from '@/lib/d1';
@@ -38,6 +36,7 @@ export async function GET() {
               topic_tag: q.topic_tag,
               question_type: q.question_type || 'MCQ',
               question_text: q.question_text,
+              image_url: q.image_url || '',
               options,
               correct_option: q.correct_option || 0,
               sample_answer: q.sample_answer || '',
@@ -63,6 +62,7 @@ export async function GET() {
         const course = (db.courses || []).find((c) => String(c._id) === String(q.course_id) || String(c.id) === String(q.course_id));
         return {
           ...q,
+          image_url: q.image_url || '',
           course_id: course ? { _id: course._id || course.id, name: course.name } : { name: 'General Course' },
         };
       });
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
   try {
     const admin = getAuthenticatedAdmin();
     const body = await req.json();
-    const { course_id, subject, topic_tag, question_type, question_text, options, correct_option, sample_answer, marks, explanation, detailed_explanation } = body;
+    const { course_id, subject, topic_tag, question_type, question_text, options, correct_option, sample_answer, marks, explanation, detailed_explanation, image_url } = body;
 
     const qType = question_type === 'Short Answer' || question_type === 'Long Answer' ? question_type : 'MCQ';
 
@@ -191,6 +191,7 @@ export async function POST(req: Request) {
     }
 
     const cleanSubject = subject || (topic_tag.includes('-') ? topic_tag.split('-')[0].trim() : 'General');
+    const cleanImageUrl = image_url ? String(image_url).trim() : '';
 
     const newQ = {
       _id: newId,
@@ -200,6 +201,7 @@ export async function POST(req: Request) {
       topic_tag,
       question_type: qType,
       question_text,
+      image_url: cleanImageUrl,
       options: cleanOptions,
       correct_option: qType === 'MCQ' ? Number(correct_option || 0) : 0,
       sample_answer: sample_answer || '',
@@ -213,7 +215,7 @@ export async function POST(req: Request) {
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       const d1Success = await executeD1(
-        'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+        'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)',
         [
           newId,
           cleanCourseId,
@@ -226,6 +228,7 @@ export async function POST(req: Request) {
           calculatedMarks,
           explanation || '',
           detailed_explanation || '',
+          cleanImageUrl,
         ]
       );
 

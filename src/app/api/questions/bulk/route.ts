@@ -87,6 +87,8 @@ export async function POST(req: Request) {
         ? String(rawCourse._id || rawCourse.id || rawCourse.name || '')
         : String(rawCourse || 'course_jee_2027');
 
+      const imgUrl = q.image_url || q.image || q.question_image || q.diagram || q.img || '';
+
       preparedQuestions.push({
         _id: generateId(),
         id: generateId(),
@@ -95,6 +97,7 @@ export async function POST(req: Request) {
         topic: chap,
         topic_tag: topicTag,
         question_text: qText,
+        image_url: imgUrl ? String(imgUrl).trim() : '',
         options: opts,
         correct_option: Number(correctIndex),
         explanation: q.explanation || `Correct Answer: Option ${String.fromCharCode(65 + Number(correctIndex))} (${opts[correctIndex] || ''})`,
@@ -218,7 +221,7 @@ export async function POST(req: Request) {
 
       for (let i = 0; i < deduplicatedQuestions.length; i += CHUNK_SIZE) {
         const chunk = deduplicatedQuestions.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').join(', ');
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)').join(', ');
         const params: any[] = [];
 
         chunk.forEach((q) => {
@@ -233,12 +236,13 @@ export async function POST(req: Request) {
             '',
             1,
             q.explanation || '',
-            q.detailed_explanation || ''
+            q.detailed_explanation || '',
+            q.image_url || ''
           );
         });
 
         const d1Success = await executeD1(
-          `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES ${placeholders}`,
+          `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES ${placeholders}`,
           params
         );
 
@@ -248,7 +252,7 @@ export async function POST(req: Request) {
           // Fallback to individual inserts for this chunk
           for (const q of chunk) {
             const singleSuccess = await executeD1(
-              'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+              'INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)',
               [
                 q.id,
                 q.course_id,
@@ -261,6 +265,7 @@ export async function POST(req: Request) {
                 1,
                 q.explanation || '',
                 q.detailed_explanation || '',
+                q.image_url || '',
               ]
             );
             if (singleSuccess) d1InsertedCount++;

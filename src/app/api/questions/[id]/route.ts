@@ -9,7 +9,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const body = await req.json();
     const qId = params.id;
 
-    const { question_text, topic_tag, question_type, options, correct_option, sample_answer, marks, explanation, detailed_explanation } = body;
+    const { question_text, topic_tag, question_type, options, correct_option, sample_answer, marks, explanation, detailed_explanation, image_url } = body;
 
     let cleanOptions = options;
     if (Array.isArray(options)) {
@@ -19,15 +19,15 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     // 1. Try Cloudflare D1 (Primary Database)
     try {
       const d1Success = await executeD1(
-        'UPDATE questions SET question_text = COALESCE(?, question_text), topic_tag = COALESCE(?, topic_tag), question_type = COALESCE(?, question_type), options_json = COALESCE(?, options_json), correct_option = COALESCE(?, correct_option), sample_answer = COALESCE(?, sample_answer), marks = COALESCE(?, marks), explanation = COALESCE(?, explanation), detailed_explanation = COALESCE(?, detailed_explanation) WHERE id = ?',
-        [question_text, topic_tag, question_type, cleanOptions, correct_option, sample_answer, marks, explanation, detailed_explanation, qId]
+        'UPDATE questions SET question_text = COALESCE(?, question_text), topic_tag = COALESCE(?, topic_tag), question_type = COALESCE(?, question_type), options_json = COALESCE(?, options_json), correct_option = COALESCE(?, correct_option), sample_answer = COALESCE(?, sample_answer), marks = COALESCE(?, marks), explanation = COALESCE(?, explanation), detailed_explanation = COALESCE(?, detailed_explanation), image_url = COALESCE(?, image_url) WHERE id = ?',
+        [question_text, topic_tag, question_type, cleanOptions, correct_option, sample_answer, marks, explanation, detailed_explanation, image_url !== undefined ? image_url : null, qId]
       );
 
       if (d1Success) {
         try {
           await executeD1(
             'INSERT INTO audit_logs (id, admin_id, admin_name, action_type, affected_entity_id, details) VALUES (?, ?, ?, ?, ?, ?)',
-            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'EDIT_QUESTION', qId, `Updated question text/options for ID ${qId}`]
+            [generateId(), admin?.adminId || 'admin_master_1', admin?.name || 'Admin', 'EDIT_QUESTION', qId, `Updated question text/options/image for ID ${qId}`]
           );
         } catch (auditErr) {}
 

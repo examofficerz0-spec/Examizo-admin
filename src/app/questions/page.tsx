@@ -26,6 +26,7 @@ import {
   Search,
   Loader2,
   CheckCircle2,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 const getInitialQuestionsCache = () => {
@@ -65,6 +66,7 @@ export default function QuestionManagementPage() {
   const [questionType, setQuestionType] = useState<'MCQ' | 'Short Answer' | 'Long Answer'>('MCQ');
   const [topicTag, setTopicTag] = useState('');
   const [questionText, setQuestionText] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [options, setOptions] = useState<string[]>(['', '', '', '']);
   const [correctOption, setCorrectOption] = useState<number>(0);
   const [sampleAnswer, setSampleAnswer] = useState('');
@@ -72,6 +74,22 @@ export default function QuestionManagementPage() {
   const [explanation, setExplanation] = useState('');
   const [detailedExplanation, setDetailedExplanation] = useState('');
   const [error, setError] = useState('');
+
+  const handleQuestionImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setImageUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Bulk Question Modal
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -497,6 +515,7 @@ export default function QuestionManagementPage() {
           topic_tag: computedTag,
           question_type: questionType,
           question_text: questionText,
+          image_url: imageUrl,
           options: questionType === 'MCQ' ? options : [],
           correct_option: questionType === 'MCQ' ? correctOption : 0,
           sample_answer: sampleAnswer,
@@ -512,6 +531,7 @@ export default function QuestionManagementPage() {
       } else {
         setShowAddModal(false);
         setQuestionText('');
+        setImageUrl('');
         setSampleAnswer('');
         setExplanation('');
         setDetailedExplanation('');
@@ -693,10 +713,11 @@ export default function QuestionManagementPage() {
         const expKey = findKey(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl']);
         const detExpKey = findKey(['detailedexplanation', 'detailed', 'stepbystep', 'workedout', 'detailedsol']);
         const marksKey = findKey(['marks', 'points', 'score', 'weight']);
+        const imgKey = findKey(['imageurl', 'image', 'questionimage', 'diagram', 'img', 'photo', 'picture', 'fig', 'figure', 'image_url', 'diagramurl']);
 
         // Auto-detect question key if not found by name
         if (!qKey) {
-          const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
+          const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey, imgKey].filter(Boolean));
           let bestKey: string | null = null;
           let bestScore = 0;
           for (const key of colKeys) {
@@ -719,7 +740,7 @@ export default function QuestionManagementPage() {
           let qText = qKey && row[qKey] !== undefined && row[qKey] !== null ? String(row[qKey]).trim() : '';
 
           if (!qText) {
-            const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey].filter(Boolean));
+            const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey, imgKey].filter(Boolean));
             let bestVal = '';
             for (const key of colKeys) {
               if (usedKeys.has(key)) continue;
@@ -764,6 +785,7 @@ export default function QuestionManagementPage() {
 
           const exp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
           const detExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
+          const qImgUrl = imgKey && row[imgKey] !== undefined && row[imgKey] !== null ? String(row[imgKey]).trim() : '';
 
           // Fallback to sheet name if no subject column exists
           const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
@@ -789,6 +811,7 @@ export default function QuestionManagementPage() {
             topic: rowTopic,
             topic_tag: `${rowSubject} - ${rowTopic}`,
             question_text: qText,
+            image_url: qImgUrl,
             options: cleanOpts,
             correct_option: correctIndex,
             explanation: exp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`,
@@ -866,27 +889,12 @@ export default function QuestionManagementPage() {
         const firstSeen = seenInFile.get(fp);
         if (firstSeen) {
           fileDups++;
-          // Log the first 10 in-file duplicate pairs so we can diagnose
-          if (fileDups <= 10) {
-            console.warn(`[ExcelDedup] IN-FILE DUP #${fileDups}:`, {
-              duplicateRow: qi + 1,
-              duplicateText: q.question_text?.substring(0, 80),
-              duplicateTopic: q.topic_tag,
-              firstSeenRow: firstSeen.idx + 1,
-              firstSeenText: firstSeen.q.question_text?.substring(0, 80),
-              firstSeenTopic: firstSeen.q.topic_tag,
-              fingerprint: fp.substring(0, 120),
-            });
-          }
           continue;
         }
         seenInFile.set(fp, { idx: qi, q });
 
         if (existingDbFingerprints.has(fp)) {
           dbDups++;
-          if (dbDups <= 5) {
-            console.warn(`[ExcelDedup] DB DUP #${dbDups}: Row ${qi + 1} "${q.question_text?.substring(0, 60)}" already in DB`);
-          }
           continue;
         }
 
@@ -916,6 +924,7 @@ export default function QuestionManagementPage() {
         Subject: 'Chemistry',
         Topic: 'Periodic Table',
         Question: 'Which element belongs to the alkali metal group?',
+        'Image URL': '',
         'Option A': 'Sodium (Na)',
         'Option B': 'Magnesium (Mg)',
         'Option C': 'Aluminium (Al)',
@@ -925,21 +934,23 @@ export default function QuestionManagementPage() {
         'Detailed Explanation': 'Step 1: Group 1 elements are known as alkali metals.\nStep 2: Sodium (Na) has electronic configuration 2, 8, 1 with 1 valence electron.\nStep 3: Therefore, Sodium belongs to the alkali metal group.'
       },
       {
-        Subject: 'Chemistry',
-        Topic: 'Chemical Bonding',
-        Question: 'Which type of chemical bond is formed by mutual sharing of electrons?',
-        'Option A': 'Ionic Bond',
-        'Option B': 'Covalent Bond',
-        'Option C': 'Metallic Bond',
-        'Option D': 'Hydrogen Bond',
-        Answer: 'B',
-        Explanation: 'Covalent bonds are formed when atoms share electron pairs.',
-        'Detailed Explanation': 'Step 1: Ionic bonding involves complete electron transfer.\nStep 2: Covalent bonding involves sharing pairs of electrons between atoms to achieve noble gas configuration.'
+        Subject: 'Physics',
+        Topic: 'Optics & Ray Diagrams',
+        Question: 'In the given ray diagram, what type of image is formed by the convex lens when the object is at 2F?',
+        'Image URL': 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
+        'Option A': 'Real, inverted, and same size',
+        'Option B': 'Virtual, erect, and magnified',
+        'Option C': 'Real, inverted, and diminished',
+        'Option D': 'Virtual, erect, and diminished',
+        Answer: 'A',
+        Explanation: 'When an object is placed at 2F of a convex lens, a real, inverted image of the same size is formed at 2F on the other side.',
+        'Detailed Explanation': 'Step 1: Object position = 2F1.\nStep 2: Ray parallel to principal axis passes through F2.\nStep 3: Ray through optical centre passes undeviated.\nStep 4: Intersection occurs at 2F2 with magnification m = -1.'
       },
       {
         Subject: 'Physics',
         Topic: 'Electrostatics',
         Question: 'What is the SI unit of electric charge?',
+        'Image URL': '',
         'Option A': 'Coulomb',
         'Option B': 'Ampere',
         'Option C': 'Volt',
@@ -949,21 +960,10 @@ export default function QuestionManagementPage() {
         'Detailed Explanation': 'Step 1: Electric charge is a fundamental property of matter.\nStep 2: SI unit of electric charge is Coulomb (C), named after Charles-Augustin de Coulomb.\nStep 3: 1 C = 1 A * 1 s.'
       },
       {
-        Subject: 'Physics',
-        Topic: 'Electrostatics',
-        Question: 'The electric field inside a hollow conducting sphere is:',
-        'Option A': 'Infinite',
-        'Option B': 'Zero',
-        'Option C': 'Equal to surface field',
-        'Option D': 'Variable',
-        Answer: 'B',
-        Explanation: 'According to Gauss\'s Law, net charge inside a conductor is zero, hence electric field is zero.',
-        'Detailed Explanation': 'Step 1: Apply Gauss\'s Law to a gaussian sphere inside hollow conductor.\nStep 2: Enclosed charge = 0.\nStep 3: Electric Field E = 0 inside.'
-      },
-      {
         Subject: 'Mathematics',
         Topic: 'Calculus',
         Question: 'What is the derivative of sin(x) with respect to x?',
+        'Image URL': '',
         'Option A': 'cos(x)',
         'Option B': '-cos(x)',
         'Option C': 'tan(x)',
@@ -1746,6 +1746,16 @@ export default function QuestionManagementPage() {
 
                           <h4 className="text-sm font-bold text-slate-900 dark:text-white">{q.question_text}</h4>
 
+                          {q.image_url && (
+                            <div className="p-2 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg inline-block max-w-full">
+                              <img
+                                src={q.image_url}
+                                alt="Question Diagram"
+                                className="max-h-48 max-w-full object-contain rounded"
+                              />
+                            </div>
+                          )}
+
                           {(!q.question_type || q.question_type === 'MCQ') && q.options && q.options.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                               {q.options.map((opt: string, idx: number) => {
@@ -1822,6 +1832,15 @@ export default function QuestionManagementPage() {
                         </button>
                       </div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white">{q.question_text}</h4>
+                      {q.image_url && (
+                        <div className="p-2 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg inline-block max-w-full">
+                          <img
+                            src={q.image_url}
+                            alt="Question Diagram"
+                            className="max-h-48 max-w-full object-contain rounded"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
               </div>
@@ -2102,14 +2121,34 @@ export default function QuestionManagementPage() {
                               key={idx}
                               className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2"
                             >
-                              <div className="flex justify-between items-start">
-                                <span className="font-bold text-slate-900 dark:text-slate-100">
+                              <div className="flex justify-between items-start gap-2">
+                                <span className="font-bold text-slate-900 dark:text-slate-100 flex-1">
                                   Q{idx + 1}. {q.question_text}
                                 </span>
-                                <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold rounded shrink-0 ml-2">
-                                  {q.topic_tag}
-                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {q.image_url && (
+                                    <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold rounded flex items-center gap-1">
+                                      <ImageIcon className="w-3 h-3" /> Image
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold rounded">
+                                    {q.topic_tag}
+                                  </span>
+                                </div>
                               </div>
+
+                              {q.image_url && (
+                                <div className="flex items-center gap-2 p-1.5 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-md">
+                                  <img
+                                    src={q.image_url}
+                                    alt="Diagram preview"
+                                    className="w-10 h-10 object-contain rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                                  />
+                                  <span className="text-[10px] text-blue-700 dark:text-blue-300 font-mono truncate max-w-xs">
+                                    {q.image_url}
+                                  </span>
+                                </div>
+                              )}
 
                               <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                                 {q.options.map((opt: string, optIdx: number) => {
@@ -2326,6 +2365,48 @@ export default function QuestionManagementPage() {
                   placeholder="Type the full question prompt..."
                   className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                 />
+              </div>
+
+              {/* Question Image / Diagram Attachment */}
+              <div className="space-y-1.5 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                  Question Diagram / Image (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="Paste image URL (https://...) or upload file below"
+                    className="flex-1 p-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
+                  />
+                  <label className="cursor-pointer px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold rounded-lg flex items-center gap-1.5 shrink-0 transition-colors text-xs">
+                    <Upload className="w-3.5 h-3.5" /> Browse Image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleQuestionImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {imageUrl && (
+                  <div className="relative inline-block border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 bg-white dark:bg-slate-900 mt-2 group">
+                    <img
+                      src={imageUrl}
+                      alt="Question Diagram Preview"
+                      className="max-h-36 max-w-full rounded object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="absolute -top-2 -right-2 p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow-md transition-all active:scale-90 cursor-pointer"
+                      title="Remove Diagram"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Marks Input */}
