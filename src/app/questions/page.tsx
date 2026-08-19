@@ -2273,8 +2273,8 @@ export default function QuestionManagementPage() {
                       style={{ width: `${bulkUploadProgress.percent}%` }}
                     />
                   </div>
-                  <p className="text-[11px] text-blue-700 dark:text-blue-300">
-                    Deduplicating against existing Question Bank and writing into database. Please keep this modal open.
+                  <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                    Please don&apos;t close this window while uploading.
                   </p>
                 </div>
               )}
