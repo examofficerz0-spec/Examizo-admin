@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     try {
       let selectedQuestionIds = Array.isArray(question_ids) && question_ids.length > 0 ? question_ids : [];
       if (selectedQuestionIds.length === 0) {
-        const qs = await queryD1('SELECT id FROM questions WHERE course_id = ? AND is_active = 1', [course_id]);
+        const qs = await queryD1('SELECT id FROM questions WHERE course_id = ? AND is_active = 1 LIMIT 100', [course_id]);
         selectedQuestionIds = qs.map((q: any) => q.id);
       }
 
