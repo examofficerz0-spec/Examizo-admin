@@ -83,7 +83,7 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
         </defs>
 
         <style>{`
-          @keyframes ezHatLandingAdmin {
+          @keyframes ezHatEntranceAdmin {
             0% {
               transform: translateY(-65px) translateX(15px) rotate(-26deg) scale(1.25);
               opacity: 0;
@@ -101,25 +101,35 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             }
           }
 
-          /* Continuous Infinite Loop for the Tassel in Admin Portal */
+          /* Continuous Infinite Hover & Floating Tilt Animation for the Graduation Hat in Admin */
+          @keyframes ezHatInfiniteFloatAdmin {
+            0%, 100% {
+              transform: translateY(0px) rotate(0deg);
+            }
+            25% {
+              transform: translateY(-4.5px) rotate(-3deg);
+            }
+            50% {
+              transform: translateY(-1px) rotate(1.8deg);
+            }
+            75% {
+              transform: translateY(-3.5px) rotate(-1.5deg);
+            }
+          }
+
+          /* Continuous Infinite Swaying Loop for the Tassel in Admin Portal */
           @keyframes ezTasselContinuousLoopAdmin {
-            0% {
+            0%, 100% {
               transform: rotate(0deg);
             }
-            20% {
-              transform: rotate(-24deg);
+            25% {
+              transform: rotate(-26deg);
             }
-            40% {
+            50% {
               transform: rotate(20deg);
             }
-            60% {
-              transform: rotate(-16deg);
-            }
-            80% {
-              transform: rotate(10deg);
-            }
-            100% {
-              transform: rotate(0deg);
+            75% {
+              transform: rotate(-14deg);
             }
           }
 
@@ -129,13 +139,13 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
               transform: rotate(0deg) skewX(0deg);
             }
             25% {
-              transform: rotate(-14deg) skewX(-8deg);
+              transform: rotate(-16deg) skewX(-10deg);
             }
             50% {
-              transform: rotate(12deg) skewX(6deg);
+              transform: rotate(14deg) skewX(8deg);
             }
             75% {
-              transform: rotate(-6deg) skewX(-3deg);
+              transform: rotate(-8deg) skewX(-4deg);
             }
           }
 
@@ -156,17 +166,17 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
 
           .ez-hat-admin {
             transform-origin: 110px 72px;
-            animation: ezHatLandingAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            animation: ezHatEntranceAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 3.2s ease-in-out 1.1s infinite;
           }
 
           .ez-tassel-loop-admin {
             transform-origin: 64px 72px;
-            animation: ezTasselContinuousLoopAdmin 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            animation: ezTasselContinuousLoopAdmin 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
 
           .ez-tassel-brush-loop-admin {
             transform-origin: 62px 90px;
-            animation: ezTasselBrushContinuousAdmin 2.2s ease-in-out infinite;
+            animation: ezTasselBrushContinuousAdmin 2.4s ease-in-out infinite;
           }
 
           .ez-e-admin {
@@ -177,7 +187,13 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
           .group\\/icon:hover .ez-hat-admin,
           .group:hover .ez-hat-admin,
           .examizo-container:hover .ez-hat-admin {
-            animation: ezHatLandingAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            animation: ezHatEntranceAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 2.6s ease-in-out 0.85s infinite;
+          }
+
+          .group\\/icon:hover .ez-tassel-loop-admin,
+          .group:hover .ez-tassel-loop-admin,
+          .examizo-container:hover .ez-tassel-loop-admin {
+            animation: ezTasselContinuousLoopAdmin 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
 
           .group\\/icon:hover .ez-e-admin,
@@ -220,7 +236,7 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
           />
         </g>
 
-        {/* 2. Mortarboard Graduation Cap (The Hat Landing On The 'E') */}
+        {/* 2. Mortarboard Graduation Cap (The Hat with Infinite Floating Motion) */}
         <g className={animate ? 'ez-hat-admin' : ''}>
           {/* Skull cap band sitting on E's crest */}
           <path
