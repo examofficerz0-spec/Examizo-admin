@@ -467,25 +467,45 @@ export default function UserManagementPage() {
     const { entity, targetType, type } = activeActionModal;
 
     try {
+      const targetId = entity._id || entity.id || entity.email;
       if (targetType === 'admin') {
-        await fetch(`/api/admins/${entity._id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/admins/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+        const data = await res.json();
         setActiveActionModal(null);
+        if (res.ok) {
+          setNotifToast(data.message || 'Admin account removed successfully!');
+          setTimeout(() => setNotifToast(null), 3500);
+        }
         fetchAdmins();
       } else {
         if (type === 'delete') {
-          await fetch(`/api/users/${entity._id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/users/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+          const data = await res.json();
+          setActiveActionModal(null);
+          if (res.ok) {
+            setNotifToast(data.message || 'Student account permanently deleted!');
+            setTimeout(() => setNotifToast(null), 3500);
+          } else {
+            alert(data.error || 'Failed to delete student');
+          }
         } else {
-          await fetch(`/api/users/${entity._id}`, {
+          const res = await fetch(`/api/users/${encodeURIComponent(targetId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: type }),
           });
+          const data = await res.json();
+          setActiveActionModal(null);
+          if (res.ok) {
+            setNotifToast(data.message || `Account ${type === 'suspend' ? 'suspended' : 'reinstated'} successfully!`);
+            setTimeout(() => setNotifToast(null), 3500);
+          }
         }
-        setActiveActionModal(null);
         fetchUsers();
       }
     } catch (err) {
       console.error(err);
+      alert('Action execution failed');
     }
   };
 
