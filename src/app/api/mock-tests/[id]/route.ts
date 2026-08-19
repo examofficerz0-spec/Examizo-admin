@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { MockTest, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { executeD1 } from '@/lib/d1';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -38,14 +39,6 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         timestamp: new Date().toISOString(),
       });
       writeSharedDb(db);
-    } catch (_) {}
-
-    // 3. Mongoose Fallback
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        await MockTest.findByIdAndDelete(testId);
-      }
     } catch (_) {}
 
     return NextResponse.json({ success: true });

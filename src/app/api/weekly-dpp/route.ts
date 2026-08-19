@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { WeeklyDPP, Course, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { getEquivalentCourseIds } from '@/lib/courseMatcher';
@@ -14,7 +12,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const courseId = searchParams.get('course_id');
 
-    // 1. Try Cloudflare D1
+    // 1. Primary: Cloudflare D1
     try {
       let sql = 'SELECT * FROM weekly_dpps WHERE is_active = 1';
       const params: any[] = [];
@@ -58,63 +56,33 @@ export async function GET(req: Request) {
       console.warn('[Admin Weekly DPP GET D1 Error]:', d1Err);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      let dpps = (db.weeklyDpps || []).filter((d: any) => d.is_active !== false);
+    // 2. Shared DB Local Resilience Fallback
+    const db = readSharedDb();
+    let dpps = (db.weeklyDpps || []).filter((d: any) => d.is_active !== false);
 
-      if (courseId) {
-        const validCourseIds = getEquivalentCourseIds(courseId, db.courses || []);
-        dpps = dpps.filter((d: any) => {
-          const dCourseId = String(typeof d.course_id === 'object' ? d.course_id?._id : d.course_id);
-          return validCourseIds.includes(dCourseId);
-        });
-      }
-
-      const formatted = dpps.map((d: any) => {
-        const dCourseId = String(typeof d.course_id === 'object' ? d.course_id?._id : d.course_id);
-        const courseObj = (db.courses || []).find((c: any) => String(c._id) === dCourseId || c.name === dCourseId);
-        const qIds = (d.question_ids || []).map((q: any) => String(q?._id || q));
-        return {
-          _id: String(d._id),
-          id: String(d._id),
-          course_id: dCourseId,
-          course_name: courseObj?.name || 'General Course',
-          title: d.title,
-          duration_minutes: d.duration_minutes || 30,
-          question_ids: qIds,
-          question_count: qIds.length,
-          is_active: d.is_active !== false,
-          created_at: d.created_at || new Date().toISOString(),
-        };
-      });
-
-      return NextResponse.json({ weeklyDpps: formatted });
-    }
-
-    // 3. Mongoose Mode Fallback
-    const query: any = { is_active: true };
     if (courseId) {
-      const allCourses = await Course.find({});
-      const validCourseIds = getEquivalentCourseIds(courseId, allCourses);
-      query.course_id = { $in: validCourseIds };
+      const validCourseIds = getEquivalentCourseIds(courseId, db.courses || []);
+      dpps = dpps.filter((d: any) => {
+        const dCourseId = String(typeof d.course_id === 'object' ? d.course_id?._id : d.course_id);
+        return validCourseIds.includes(dCourseId);
+      });
     }
 
-    const dpps = await WeeklyDPP.find(query).populate('course_id', 'name');
-    const formatted = dpps.map((d) => {
-      const qIds = (d.question_ids || []).map((q: any) => q._id?.toString() || q.toString());
+    const formatted = dpps.map((d: any) => {
+      const dCourseId = String(typeof d.course_id === 'object' ? d.course_id?._id : d.course_id);
+      const courseObj = (db.courses || []).find((c: any) => String(c._id) === dCourseId || c.name === dCourseId);
+      const qIds = (d.question_ids || []).map((q: any) => String(q?._id || q));
       return {
-        _id: d._id.toString(),
-        id: d._id.toString(),
-        course_id: (d.course_id as any)?._id?.toString() || d.course_id?.toString(),
-        course_name: (d.course_id as any)?.name || 'General Course',
+        _id: String(d._id || d.id),
+        id: String(d._id || d.id),
+        course_id: dCourseId,
+        course_name: courseObj?.name || 'General Course',
         title: d.title,
-        duration_minutes: d.duration_minutes,
+        duration_minutes: d.duration_minutes || 30,
         question_ids: qIds,
         question_count: qIds.length,
-        is_active: d.is_active,
-        created_at: d.created_at,
+        is_active: d.is_active !== false,
+        created_at: d.created_at || new Date().toISOString(),
       };
     });
 
@@ -137,7 +105,7 @@ export async function POST(req: Request) {
     const newId = generateId();
     const selectedQIds = Array.isArray(question_ids) ? question_ids : [];
 
-    // 1. Try Cloudflare D1
+    // 1. Primary: Cloudflare D1
     try {
       const d1Success = await executeD1(
         'INSERT INTO weekly_dpps (id, course_id, title, duration_minutes, question_ids_json, is_active) VALUES (?, ?, ?, ?, ?, 1)',
@@ -185,22 +153,6 @@ export async function POST(req: Request) {
         timestamp: new Date().toISOString(),
       });
       writeSharedDb(db);
-    } catch (_) {}
-
-    // 3. Mongoose Fallback
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        await WeeklyDPP.create({
-          _id: newId,
-          course_id,
-          title: title.trim(),
-          duration_minutes: Number(duration_minutes),
-          question_ids: selectedQIds,
-          is_active: true,
-          created_at: new Date(),
-        });
-      }
     } catch (_) {}
 
     return NextResponse.json({ success: true, message: 'Weekly DPP published successfully' }, { status: 201 });

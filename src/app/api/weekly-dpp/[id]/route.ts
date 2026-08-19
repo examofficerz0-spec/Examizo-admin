@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { WeeklyDPP, AuditLog } from '@/lib/models';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { executeD1 } from '@/lib/d1';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function DELETE(
   req: Request,
@@ -35,14 +36,6 @@ export async function DELETE(
         db.weeklyDpps = db.weeklyDpps.filter((d) => d._id !== id && d.id !== id);
       }
       writeSharedDb(db);
-    } catch (_) {}
-
-    // 3. Mongoose Fallback
-    try {
-      const { isMemoryMode } = await dbConnect();
-      if (!isMemoryMode) {
-        await WeeklyDPP.findByIdAndDelete(id);
-      }
     } catch (_) {}
 
     return NextResponse.json({ success: true, message: 'Weekly DPP deleted' });

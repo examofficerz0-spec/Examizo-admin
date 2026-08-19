@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/lib/db';
-import { User, Question, Course, Attempt, AuditLog, MockTest } from '@/lib/models';
 import { readSharedDb } from '@/lib/sharedDb';
 import { queryD1 } from '@/lib/d1';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
-    // 1. Try Cloudflare D1
+    // 1. Primary: Cloudflare D1
     try {
       const usersCountRes = await queryD1("SELECT COUNT(*) as total FROM users WHERE status != 'Deleted'");
       const questionsCountRes = await queryD1("SELECT COUNT(*) as total FROM questions WHERE is_active = 1");
@@ -21,7 +22,7 @@ export async function GET() {
         const activeCourses = coursesCountRes[0]?.total || 0;
         const activeMockTests = testsCountRes[0]?.total || 0;
 
-        const totalAttempts = attemptsRes.length;
+        const totalAttempts = (attemptsRes || []).length;
         let passRate = 'No attempts yet';
 
         if (totalAttempts > 0) {
@@ -51,7 +52,7 @@ export async function GET() {
           { time: '22:00', count: 0 },
         ];
 
-        attemptsRes.forEach((att: any) => {
+        (attemptsRes || []).forEach((att: any) => {
           const dateStr = att.submitted_at || att.started_at || att.created_at;
           if (dateStr) {
             const hour = new Date(dateStr).getHours();
@@ -79,49 +80,13 @@ export async function GET() {
       console.warn('[Admin Dashboard D1 Error]:', e);
     }
 
-    // 2. Memory Mode Fallback
-    const { isMemoryMode } = await dbConnect();
-    if (isMemoryMode) {
-      const db = readSharedDb();
-      const totalStudents = (db.users || []).filter((u: any) => u.status !== 'Deleted').length;
-      const totalQuestions = (db.questions || []).filter((q: any) => q.is_active !== false).length;
-      const activeCourses = (db.courses || []).filter((c: any) => c.is_active !== false).length;
-      const activeMockTests = (db.mockTests || []).filter((m: any) => m.is_active !== false).length;
-      const attempts = db.attempts || [];
-
-      return NextResponse.json({
-        metrics: {
-          totalStudents,
-          totalQuestions,
-          activeCourses,
-          activeMockTests,
-          totalAttempts: attempts.length,
-          passRate: attempts.length > 0 ? '75%' : 'No attempts yet',
-        },
-        hourlyData: [
-          { time: '00:00', count: 0 },
-          { time: '02:00', count: 0 },
-          { time: '04:00', count: 0 },
-          { time: '06:00', count: 0 },
-          { time: '08:00', count: 0 },
-          { time: '10:00', count: 0 },
-          { time: '12:00', count: 0 },
-          { time: '14:00', count: 0 },
-          { time: '16:00', count: 0 },
-          { time: '18:00', count: 0 },
-          { time: '20:00', count: 0 },
-          { time: '22:00', count: 0 },
-        ],
-        auditLogs: (db.auditLogs || []).slice(0, 5),
-      });
-    }
-
-    // 3. Mongoose Fallback
-    const totalStudents = await User.countDocuments({ status: { $ne: 'Deleted' } });
-    const totalQuestions = await Question.countDocuments({ is_active: true });
-    const activeCourses = await Course.countDocuments({ is_active: true });
-    const activeMockTests = await MockTest.countDocuments({ is_active: true });
-    const attempts = await Attempt.find();
+    // 2. Shared DB Local Resilience Fallback
+    const db = readSharedDb();
+    const totalStudents = (db.users || []).filter((u: any) => u.status !== 'Deleted').length;
+    const totalQuestions = (db.questions || []).filter((q: any) => q.is_active !== false).length;
+    const activeCourses = (db.courses || []).filter((c: any) => c.is_active !== false).length;
+    const activeMockTests = (db.mockTests || []).filter((m: any) => m.is_active !== false).length;
+    const attempts = db.attempts || [];
 
     return NextResponse.json({
       metrics: {
@@ -132,8 +97,21 @@ export async function GET() {
         totalAttempts: attempts.length,
         passRate: attempts.length > 0 ? '75%' : 'No attempts yet',
       },
-      hourlyData: [],
-      auditLogs: await AuditLog.find().sort({ timestamp: -1 }).limit(5),
+      hourlyData: [
+        { time: '00:00', count: 0 },
+        { time: '02:00', count: 0 },
+        { time: '04:00', count: 0 },
+        { time: '06:00', count: 0 },
+        { time: '08:00', count: 0 },
+        { time: '10:00', count: 0 },
+        { time: '12:00', count: 0 },
+        { time: '14:00', count: 0 },
+        { time: '16:00', count: 0 },
+        { time: '18:00', count: 0 },
+        { time: '20:00', count: 0 },
+        { time: '22:00', count: 0 },
+      ],
+      auditLogs: (db.auditLogs || []).slice(0, 5),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
