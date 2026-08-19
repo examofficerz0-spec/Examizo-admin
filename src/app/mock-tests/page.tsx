@@ -226,9 +226,13 @@ export default function MockTestManagementPage() {
     }
 
     for (const s of activeCourseSubjects) {
-      if (tag.toLowerCase().startsWith(s.toLowerCase())) {
+      if (
+        tag.toLowerCase().startsWith(s.toLowerCase()) ||
+        qSub.toLowerCase() === s.toLowerCase() ||
+        tag.toLowerCase().includes(s.toLowerCase())
+      ) {
         subject = s;
-        const rest = tag.slice(s.length).replace(/^[\s\-:]+/, '').trim();
+        const rest = tag.toLowerCase().startsWith(s.toLowerCase()) ? tag.slice(s.length).replace(/^[\s\-:]+/, '').trim() : tag;
         topic = rest || tag;
         break;
       }
@@ -258,8 +262,15 @@ export default function MockTestManagementPage() {
   }, [availableCourseQuestions, activeCourseSubjects]);
 
   const allAvailableSubjects = React.useMemo(() => {
-    return Object.keys(groupedQuestions);
-  }, [groupedQuestions]);
+    const subjects = new Set<string>();
+    activeCourseSubjects.forEach((s) => {
+      if (groupedQuestions[s] && Object.keys(groupedQuestions[s]).length > 0) {
+        subjects.add(s);
+      }
+    });
+    Object.keys(groupedQuestions).forEach((s) => subjects.add(s));
+    return Array.from(subjects);
+  }, [groupedQuestions, activeCourseSubjects]);
 
   const allAvailableTopics = React.useMemo(() => {
     const topicsSet = new Set<string>();
@@ -270,6 +281,46 @@ export default function MockTestManagementPage() {
     });
     return Array.from(topicsSet);
   }, [groupedQuestions, selectedSubjectFilter]);
+
+  const [quickPickCount, setQuickPickCount] = useState<number>(100);
+  const [dppQuickPickCount, setDppQuickPickCount] = useState<number>(30);
+
+  const handleQuickPick = (count: number, shuffle = false) => {
+    const candidates: any[] = [];
+    Object.entries(groupedQuestions).forEach(([sub, topicsMap]) => {
+      if (selectedSubjectFilter === 'all' || selectedSubjectFilter === sub) {
+        Object.entries(topicsMap).forEach(([top, qList]) => {
+          if (selectedTopicFilter === 'all' || selectedTopicFilter === top) {
+            candidates.push(...qList);
+          }
+        });
+      }
+    });
+
+    const filteredCandidates = searchQuestionQuery.trim()
+      ? candidates.filter((q) => (q.question_text || '').toLowerCase().includes(searchQuestionQuery.toLowerCase()))
+      : candidates;
+
+    let pool = [...filteredCandidates];
+    if (shuffle) {
+      pool = pool.sort(() => Math.random() - 0.5);
+    }
+
+    const toPick = pool.slice(0, count).map((q) => q._id);
+    const newSelected = Array.from(new Set([...selectedQuestionIds, ...toPick]));
+    setSelectedQuestionIds(newSelected);
+  };
+
+  const handleClearCurrentSubject = () => {
+    if (selectedSubjectFilter === 'all') {
+      setSelectedQuestionIds([]);
+      return;
+    }
+    const currentSubTopics = groupedQuestions[selectedSubjectFilter] || {};
+    const subIds = new Set<string>();
+    Object.values(currentSubTopics).forEach((qList) => qList.forEach((q) => subIds.add(q._id)));
+    setSelectedQuestionIds(selectedQuestionIds.filter((id) => !subIds.has(id)));
+  };
 
   const toggleQuestionSelection = (qId: string) => {
     if (selectedQuestionIds.includes(qId)) {
@@ -394,6 +445,43 @@ export default function MockTestManagementPage() {
       const next = new Set([...selectedDppQuestionIds, ...ids]);
       setSelectedDppQuestionIds(Array.from(next));
     }
+  };
+
+  const handleDppQuickPick = (count: number, shuffle = false) => {
+    const candidates: any[] = [];
+    Object.entries(groupedDppQuestions).forEach(([sub, topicsMap]) => {
+      if (dppSubjectFilter === 'all' || dppSubjectFilter === sub) {
+        Object.entries(topicsMap).forEach(([top, qList]) => {
+          if (dppTopicFilter === 'all' || dppTopicFilter === top) {
+            candidates.push(...qList);
+          }
+        });
+      }
+    });
+
+    const filteredCandidates = dppSearchQuery.trim()
+      ? candidates.filter((q) => (q.question_text || '').toLowerCase().includes(dppSearchQuery.toLowerCase()))
+      : candidates;
+
+    let pool = [...filteredCandidates];
+    if (shuffle) {
+      pool = pool.sort(() => Math.random() - 0.5);
+    }
+
+    const toPick = pool.slice(0, count).map((q) => q._id);
+    const newSelected = Array.from(new Set([...selectedDppQuestionIds, ...toPick]));
+    setSelectedDppQuestionIds(newSelected);
+  };
+
+  const handleDppClearCurrentSubject = () => {
+    if (dppSubjectFilter === 'all') {
+      setSelectedDppQuestionIds([]);
+      return;
+    }
+    const currentSubTopics = groupedDppQuestions[dppSubjectFilter] || {};
+    const subIds = new Set<string>();
+    Object.values(currentSubTopics).forEach((qList) => qList.forEach((q) => subIds.add(q._id)));
+    setSelectedDppQuestionIds(selectedDppQuestionIds.filter((id) => !subIds.has(id)));
   };
 
   return (
@@ -723,8 +811,8 @@ export default function MockTestManagementPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Subject Tabs Header */}
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                    {/* Subject Tabs Header (Wrap enabled so Chemistry & all subjects are fully visible) */}
+                    <div className="flex flex-wrap items-center gap-1.5 pb-1">
                       <button
                         type="button"
                         onClick={() => {
@@ -777,6 +865,70 @@ export default function MockTestManagementPage() {
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Quick Pick Limits Toolbar */}
+                    <div className="p-2.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 dark:from-slate-800/90 dark:to-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-extrabold text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
+                          <span>⚡</span> Quick Auto-Pick ({selectedSubjectFilter === 'all' ? 'All Subjects' : selectedSubjectFilter}):
+                        </span>
+                        {selectedQuestionIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearCurrentSubject}
+                            className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline"
+                          >
+                            Deselect {selectedSubjectFilter === 'all' ? 'All' : selectedSubjectFilter}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[25, 50, 100, 180, 200, 250, 300].map((limit) => (
+                          <button
+                            key={limit}
+                            type="button"
+                            onClick={() => handleQuickPick(limit, false)}
+                            className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
+                          >
+                            +{limit}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => handleQuickPick(availableCourseQuestions.length, false)}
+                          className="px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
+                        >
+                          Pick All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickPick(quickPickCount || 100, true)}
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs flex items-center gap-1"
+                          title="Randomly shuffle and pick questions"
+                        >
+                          <span>🎲</span> Random {quickPickCount || 100}
+                        </button>
+                        <div className="flex items-center gap-1 ml-auto">
+                          <span className="text-[11px] text-slate-500 font-semibold">Custom:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={availableCourseQuestions.length}
+                            value={quickPickCount}
+                            onChange={(e) => setQuickPickCount(Number(e.target.value))}
+                            className="w-16 p-1 text-xs text-center font-bold bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-md text-slate-900 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuickPick(quickPickCount, false)}
+                            className="px-2.5 py-1 bg-[#0B192C] hover:bg-[#060E18] text-white rounded-md text-xs font-bold transition-all active:scale-95"
+                          >
+                            Pick
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Filter controls: Topic & Search */}
@@ -1030,8 +1182,8 @@ export default function MockTestManagementPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Subject Tabs */}
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                    {/* Subject Tabs Header (Wrap enabled) */}
+                    <div className="flex flex-wrap items-center gap-1.5 pb-1">
                       <button
                         type="button"
                         onClick={() => {
@@ -1084,6 +1236,70 @@ export default function MockTestManagementPage() {
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Quick Pick Limits Toolbar for DPP */}
+                    <div className="p-2.5 bg-gradient-to-r from-emerald-50/90 to-teal-50/90 dark:from-slate-800/90 dark:to-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-extrabold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                          <span>⚡</span> Quick Auto-Pick DPP ({dppSubjectFilter === 'all' ? 'All Subjects' : dppSubjectFilter}):
+                        </span>
+                        {selectedDppQuestionIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDppClearCurrentSubject}
+                            className="text-[11px] font-bold text-rose-600 hover:text-rose-700 underline"
+                          >
+                            Deselect {dppSubjectFilter === 'all' ? 'All' : dppSubjectFilter}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[10, 15, 20, 25, 30, 50, 100].map((limit) => (
+                          <button
+                            key={limit}
+                            type="button"
+                            onClick={() => handleDppQuickPick(limit, false)}
+                            className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
+                          >
+                            +{limit}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => handleDppQuickPick(availableDppQuestions.length, false)}
+                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
+                        >
+                          Pick All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDppQuickPick(dppQuickPickCount || 30, true)}
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs flex items-center gap-1"
+                          title="Randomly shuffle and pick questions"
+                        >
+                          <span>🎲</span> Random {dppQuickPickCount || 30}
+                        </button>
+                        <div className="flex items-center gap-1 ml-auto">
+                          <span className="text-[11px] text-slate-500 font-semibold">Custom:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={availableDppQuestions.length}
+                            value={dppQuickPickCount}
+                            onChange={(e) => setDppQuickPickCount(Number(e.target.value))}
+                            className="w-16 p-1 text-xs text-center font-bold bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 rounded-md text-slate-900 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDppQuickPick(dppQuickPickCount, false)}
+                            className="px-2 py-1 bg-[#0B192C] hover:bg-[#060E18] text-white rounded-md text-xs font-bold transition-all active:scale-95"
+                          >
+                            Pick
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Filter controls: Search & Topic dropdown */}
