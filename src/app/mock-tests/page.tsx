@@ -5,7 +5,7 @@ import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import {
   FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
-  BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles
+  BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3
 } from 'lucide-react';
 
 export default function MockTestManagementPage() {
@@ -35,6 +35,7 @@ export default function MockTestManagementPage() {
 
   // Preset Modal State
   const [showAddPresetModal, setShowAddPresetModal] = useState(false);
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [presetTitle, setPresetTitle] = useState('');
   const [presetCourseId, setPresetCourseId] = useState('');
   const [presetDuration, setPresetDuration] = useState(180);
@@ -100,7 +101,7 @@ export default function MockTestManagementPage() {
 
   // Update preset default subject allocations when presetCourseId changes
   useEffect(() => {
-    if (!presetCourseId) return;
+    if (!presetCourseId || editingPresetId) return;
     const crs = courses.find((c) => String(c._id) === String(presetCourseId) || String(c.id) === String(presetCourseId));
     if (crs?.subjects && Array.isArray(crs.subjects)) {
       const defaults: Record<string, number> = {};
@@ -116,7 +117,30 @@ export default function MockTestManagementPage() {
       });
       setPresetAllocations(defaults);
     }
-  }, [presetCourseId, courses]);
+  }, [presetCourseId, courses, editingPresetId]);
+
+  const handleOpenCreatePreset = () => {
+    setEditingPresetId(null);
+    setPresetTitle('');
+    setPresetDuration(180);
+    setPresetCutoff(120);
+    setPresetIsDynamic(true);
+    if (courses.length > 0) {
+      setPresetCourseId(courses[0]._id || courses[0].id);
+    }
+    setShowAddPresetModal(true);
+  };
+
+  const handleOpenEditPreset = (preset: any) => {
+    setEditingPresetId(preset._id || preset.id);
+    setPresetTitle(preset.title || '');
+    setPresetCourseId(preset.course_id || '');
+    setPresetDuration(preset.duration_minutes || 180);
+    setPresetCutoff(preset.cutoff_marks || 120);
+    setPresetAllocations(preset.subject_allocations || {});
+    setPresetIsDynamic(preset.is_dynamic_reshuffle !== false);
+    setShowAddPresetModal(true);
+  };
 
   const handleCreatePreset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,8 +148,11 @@ export default function MockTestManagementPage() {
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/presets', {
-        method: 'POST',
+      const url = editingPresetId ? `/api/presets/${editingPresetId}` : '/api/presets';
+      const method = editingPresetId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           course_id: presetCourseId || courseId,
@@ -139,14 +166,15 @@ export default function MockTestManagementPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to create exam preset');
+        setError(data.error || `Failed to ${editingPresetId ? 'update' : 'create'} exam preset`);
       } else {
         setShowAddPresetModal(false);
+        setEditingPresetId(null);
         setPresetTitle('');
         fetchData();
       }
     } catch (err: any) {
-      setError(err.message || 'Error creating preset');
+      setError(err.message || 'Error saving preset');
     } finally {
       setSubmitting(false);
     }
@@ -728,7 +756,7 @@ export default function MockTestManagementPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowAddPresetModal(true)}
+                  onClick={handleOpenCreatePreset}
                   type="button"
                   className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
                 >
@@ -757,13 +785,22 @@ export default function MockTestManagementPage() {
                           <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-purple-50 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                             {preset.course_name || 'Course Track'}
                           </span>
-                          <button
-                            onClick={() => handleDeletePreset(preset._id || preset.id)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                            title="Delete Preset"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenEditPreset(preset)}
+                              className="text-slate-400 hover:text-purple-600 transition-colors p-1"
+                              title="Edit Preset"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePreset(preset._id || preset.id)}
+                              className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                              title="Delete Preset"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
 
                         <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">{preset.title}</h3>
@@ -907,9 +944,11 @@ export default function MockTestManagementPage() {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-purple-600" /> Create Custom Exam Preset / Blueprint
+                  <Sliders className="w-4 h-4 text-purple-600" /> {editingPresetId ? 'Edit Exam Preset / Blueprint' : 'Create Custom Exam Preset / Blueprint'}
                 </h3>
-                <p className="text-xs text-slate-500">Define custom subject quotas (e.g. 45 Phy, 45 Chem, 90 Math for JEE).</p>
+                <p className="text-xs text-slate-500">
+                  {editingPresetId ? 'Modify subject quotas and exam rules for this blueprint.' : 'Define custom subject quotas (e.g. 45 Phy, 45 Chem, 90 Math for JEE).'}
+                </p>
               </div>
               <button onClick={() => setShowAddPresetModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -1029,7 +1068,7 @@ export default function MockTestManagementPage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl shadow-xs"
                 >
-                  {submitting ? 'Saving...' : 'Save Exam Preset'}
+                  {submitting ? 'Saving...' : editingPresetId ? 'Save Changes' : 'Save Exam Preset'}
                 </button>
               </div>
             </form>
