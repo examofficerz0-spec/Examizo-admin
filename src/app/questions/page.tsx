@@ -1111,8 +1111,8 @@ export default function QuestionManagementPage() {
         }));
       }
 
-      // Chunked upload helper for large question batches (e.g. 1800 questions)
-      const CHUNK_SIZE = 250;
+      // High-performance scalable chunk size (1000 questions per network batch)
+      const CHUNK_SIZE = 1000;
       let totalInserted = 0;
       let totalSkipped = 0;
       const totalBatches = Math.ceil(questionsToSubmit.length / CHUNK_SIZE);
@@ -1128,7 +1128,7 @@ export default function QuestionManagementPage() {
           processedCount: currentProcessed,
           totalCount: questionsToSubmit.length,
           percent,
-          message: `Uploading batch ${batchNum} of ${totalBatches} (${currentProcessed} of ${questionsToSubmit.length} questions)...`,
+          message: `Fast uploading batch ${batchNum} of ${totalBatches} (${currentProcessed} of ${questionsToSubmit.length} questions)...`,
         });
 
         const batch = questionsToSubmit.slice(i, i + CHUNK_SIZE);
