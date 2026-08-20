@@ -77,14 +77,13 @@ export async function middleware(request: NextRequest) {
   const admin = token ? await verifyToken(token) : null;
   const isAuthenticated = !!admin;
 
-  // 2. If authenticated admin visits /login -> redirect to /dashboard
-  if (isAuthenticated && pathname === '/login') {
-    const dashboardUrl = new URL('/dashboard', request.url);
-    return NextResponse.redirect(dashboardUrl);
-  }
-
-  // 3. Allow public routes (/login, /api/auth/login, /api/seed)
-  if (pathname === '/login' || pathname === '/api/auth/login' || pathname === '/api/seed') {
+  // 2. Allow public routes (/login, /api/auth/login, /api/auth/logout, /api/seed)
+  if (
+    pathname === '/login' ||
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/logout' ||
+    pathname === '/api/seed'
+  ) {
     const response = NextResponse.next();
     applySecurityHeaders(response);
     return response;

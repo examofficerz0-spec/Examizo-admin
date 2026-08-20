@@ -10,7 +10,7 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,14 +25,15 @@ export default function AdminLoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Invalid credentials');
       } else {
-        router.push('/dashboard');
+        const targetUrl = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('redirect')) || '/dashboard';
+        window.location.href = targetUrl;
       }
     } catch (err: any) {
       setError('An error occurred during login');

@@ -6,13 +6,26 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password, rememberMe } = await req.json();
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Username/Email and password are required' }, { status: 400 });
     }
 
     const lowerInput = email.toLowerCase().trim();
+
+    const getCookieOptions = () => {
+      const options: any = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+      };
+      if (rememberMe) {
+        options.maxAge = 7 * 24 * 60 * 60;
+      }
+      return options;
+    };
 
     // Explicit master admin shortcut ("admin" / "admin" / "admin@examizo.com")
     if (
@@ -26,20 +39,14 @@ export async function POST(req: Request) {
         role: 'Super Admin',
         permissions: ['all'],
         allowed_courses: ['all'],
-      });
+      }, !!rememberMe);
 
       const response = NextResponse.json({
         success: true,
         admin: { id: 'admin_master_1', name: 'Master Controller', email: 'admin@exammaster.com', role: 'Super Admin', permissions: ['all'], allowed_courses: ['all'] },
       });
 
-      response.cookies.set('admin_token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60,
-        path: '/',
-      });
+      response.cookies.set('admin_token', token, getCookieOptions());
 
       return response;
     }
@@ -65,20 +72,14 @@ export async function POST(req: Request) {
             role: admin.role,
             permissions,
             allowed_courses,
-          });
+          }, !!rememberMe);
 
           const response = NextResponse.json({
             success: true,
             admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role, permissions, allowed_courses },
           });
 
-          response.cookies.set('admin_token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60,
-            path: '/',
-          });
+          response.cookies.set('admin_token', token, getCookieOptions());
 
           return response;
         }
@@ -107,20 +108,14 @@ export async function POST(req: Request) {
       role: admin.role,
       permissions,
       allowed_courses,
-    });
+    }, !!rememberMe);
 
     const response = NextResponse.json({
       success: true,
       admin: { id: admin._id, name: admin.name, email: admin.email, role: admin.role, permissions, allowed_courses },
     });
 
-    response.cookies.set('admin_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
-      path: '/',
-    });
+    response.cookies.set('admin_token', token, getCookieOptions());
 
     return response;
   } catch (error: any) {

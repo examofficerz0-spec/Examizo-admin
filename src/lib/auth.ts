@@ -12,8 +12,8 @@ export interface AdminPayload {
   allowed_courses?: string[];
 }
 
-export function signAdminToken(payload: AdminPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+export function signAdminToken(payload: AdminPayload, rememberMe: boolean = false): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: rememberMe ? '7d' : '24h' });
 }
 
 export function verifyAdminToken(token: string): AdminPayload | null {
