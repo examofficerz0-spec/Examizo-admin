@@ -7,7 +7,7 @@ import {
   FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
   BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3
 } from 'lucide-react';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 
 export default function MockTestManagementPage() {
   const initialCache = getAdminSwrCache<any>('admin_mock_tests_cache');
@@ -114,7 +114,21 @@ export default function MockTestManagementPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to mock tests cache
+    const unsubscribe = subscribeAdminSwrCache<any>('admin_mock_tests_cache', (fresh) => {
+      if (fresh) {
+        if (Array.isArray(fresh.tests)) setTests(fresh.tests);
+        if (Array.isArray(fresh.courses)) setCourses(fresh.courses);
+        if (Array.isArray(fresh.questions)) setQuestions(fresh.questions);
+        if (Array.isArray(fresh.weeklyDpps)) setWeeklyDpps(fresh.weeklyDpps);
+        if (Array.isArray(fresh.presets)) setPresets(fresh.presets);
+        setLoading(false);
+      }
+    });
+
     fetchData();
+
+    return () => unsubscribe();
   }, []);
 
   // Update preset default subject allocations when presetCourseId changes

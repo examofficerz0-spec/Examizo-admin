@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache } from '@/lib/adminSwrCache';
 import { 
   ClipboardList, 
   Trash2, 
@@ -45,7 +45,17 @@ export default function AuditLogsPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to audit logs cache
+    const unsubscribe = subscribeAdminSwrCache<any[]>('admin_audit_logs_cache', (fresh) => {
+      if (Array.isArray(fresh)) {
+        setLogs(fresh);
+        setLoading(false);
+      }
+    });
+
     fetchLogs();
+
+    return () => unsubscribe();
   }, []);
 
   const handleClearLogs = async () => {

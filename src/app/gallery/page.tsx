@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 import { 
   Plus, 
   Search, 
@@ -90,7 +90,17 @@ export default function AdminGalleryPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to gallery cache
+    const unsubscribe = subscribeAdminSwrCache<GalleryItem[]>('admin_gallery_cache', (fresh) => {
+      if (Array.isArray(fresh)) {
+        setItems(fresh);
+        setLoading(false);
+      }
+    });
+
     fetchGallery();
+
+    return () => unsubscribe();
   }, []);
 
   const handleOpenAdd = () => {

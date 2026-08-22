@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 import { Users, Search, UserPlus, ShieldCheck, Trash2, X, AlertTriangle, Shield, Edit3, BookOpen, Key, CheckSquare, Square, Eye, EyeOff, Bell, Send, CheckCircle2, Lock, ChevronDown, ChevronUp, Layers, BarChart2 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -315,7 +315,19 @@ export default function UserManagementPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to users & admins cache
+    const unsubscribe = subscribeAdminSwrCache<any>('admin_users_cache', (fresh) => {
+      if (fresh) {
+        if (Array.isArray(fresh.users)) setUsers(fresh.users);
+        if (Array.isArray(fresh.admins)) setAdmins(fresh.admins);
+        if (Array.isArray(fresh.courses)) setCourses(fresh.courses);
+        setLoadingUsers(false);
+      }
+    });
+
     fetchCourses();
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { BookOpen, Plus, Trash2, AlertTriangle, X, Trophy, GraduationCap, ChevronDown, Edit2 } from 'lucide-react';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 
 export default function CourseManagementPage() {
   const initialCache = getAdminSwrCache<any[]>('admin_courses_cache');
@@ -118,7 +118,17 @@ export default function CourseManagementPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to courses cache
+    const unsubscribe = subscribeAdminSwrCache<any[]>('admin_courses_cache', (fresh) => {
+      if (Array.isArray(fresh)) {
+        setCourses(fresh);
+        setLoading(false);
+      }
+    });
+
     fetchCourses();
+
+    return () => unsubscribe();
   }, []);
 
   const handleOpenAddCourse = () => {

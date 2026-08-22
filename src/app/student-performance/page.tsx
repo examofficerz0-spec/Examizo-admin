@@ -21,7 +21,7 @@ import {
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function StudentPerformancePage() {
   const initialCache = getAdminSwrCache<{ courses: any[]; users: any[] }>('admin_performance_cache');
@@ -33,7 +33,18 @@ export default function StudentPerformancePage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    // Live reactive subscription to performance data cache
+    const unsubscribe = subscribeAdminSwrCache<{ courses: any[]; users: any[] }>('admin_performance_cache', (fresh) => {
+      if (fresh) {
+        if (Array.isArray(fresh.courses)) setCourses(fresh.courses);
+        if (Array.isArray(fresh.users)) setUsers(fresh.users);
+        setLoading(false);
+      }
+    });
+
     fetchData();
+
+    return () => unsubscribe();
   }, []);
 
   const fetchData = async () => {

@@ -20,7 +20,7 @@ import {
   FileCheck,
   ClipboardList,
 } from 'lucide-react';
-import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
+import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -82,7 +82,19 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
+    // Live reactive subscription to dashboard cache
+    const unsubscribe = subscribeAdminSwrCache<any>('admin_dashboard_cache', (fresh) => {
+      if (fresh) {
+        if (fresh.metrics) setMetrics(fresh.metrics);
+        if (fresh.hourlyData) setHourlyData(fresh.hourlyData);
+        if (fresh.auditLogs) setLogs(fresh.auditLogs);
+        setLoading(false);
+      }
+    });
+
     fetchDashboardData();
+
+    return () => unsubscribe();
   }, []);
 
   const maxAttemptsInSlot = Math.max(...hourlyData.map((d) => d.count || 0), 1);
