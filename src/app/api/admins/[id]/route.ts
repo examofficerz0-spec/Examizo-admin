@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
-import { executeD1 } from '@/lib/d1';
+import { queryD1, executeD1 } from '@/lib/d1';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -10,43 +10,91 @@ export const revalidate = 0;
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     const currentAdmin = getAuthenticatedAdmin();
-    const targetId = decodeURIComponent(params.id).trim();
+    const rawTargetId = decodeURIComponent(params.id).trim();
     const { name, role, permissions, allowed_courses, password } = await req.json();
+
+    let d1Admin: any = null;
+    try {
+      const d1Results = await queryD1('SELECT * FROM admins WHERE id = ? OR LOWER(email) = ? LIMIT 1', [
+        rawTargetId,
+        rawTargetId.toLowerCase(),
+      ]);
+      if (d1Results && d1Results.length > 0) {
+        d1Admin = d1Results[0];
+      }
+    } catch (_) {}
 
     const db = readSharedDb();
     const admin = (db.admins || []).find(
       (a: any) =>
-        String(a._id) === targetId ||
-        String(a.id) === targetId ||
-        (a.email && a.email.toLowerCase() === targetId.toLowerCase())
+        String(a._id) === rawTargetId ||
+        String(a.id) === rawTargetId ||
+        (a.email && a.email.toLowerCase() === rawTargetId.toLowerCase())
     );
 
-    if (!admin) {
+    if (!d1Admin && !admin) {
       return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
     }
 
-    if (name) admin.name = name;
-    if (role) admin.role = role;
-    if (permissions) admin.permissions = permissions;
-    if (allowed_courses) admin.allowed_courses = allowed_courses;
+    let password_hash: string | undefined = undefined;
     if (password) {
-      admin.password_hash = await bcrypt.hash(password, 10);
-      admin.raw_password = password;
+      password_hash = await bcrypt.hash(password, 10);
     }
 
+    const updatedName = name || d1Admin?.name || admin?.name;
+    const updatedRole = role || d1Admin?.role || admin?.role;
+    const updatedPerms =
+      permissions ||
+      (d1Admin?.permissions_json ? JSON.parse(d1Admin.permissions_json) : admin?.permissions) || [
+        'manage_questions',
+      ];
+    const updatedCourses =
+      allowed_courses ||
+      (d1Admin?.allowed_courses_json ? JSON.parse(d1Admin.allowed_courses_json) : admin?.allowed_courses) || [
+        'all',
+      ];
+
+    // 1. Update D1
     try {
-      if (password) {
+      if (password_hash) {
         await executeD1(
           'UPDATE admins SET name = ?, role = ?, password_hash = ?, permissions_json = ?, allowed_courses_json = ? WHERE id = ? OR LOWER(email) = ?',
-          [admin.name, admin.role, admin.password_hash, JSON.stringify(admin.permissions), JSON.stringify(admin.allowed_courses), targetId, (admin.email || '').toLowerCase()]
+          [
+            updatedName,
+            updatedRole,
+            password_hash,
+            JSON.stringify(updatedPerms),
+            JSON.stringify(updatedCourses),
+            rawTargetId,
+            (d1Admin?.email || admin?.email || rawTargetId).toLowerCase(),
+          ]
         );
       } else {
         await executeD1(
           'UPDATE admins SET name = ?, role = ?, permissions_json = ?, allowed_courses_json = ? WHERE id = ? OR LOWER(email) = ?',
-          [admin.name, admin.role, JSON.stringify(admin.permissions), JSON.stringify(admin.allowed_courses), targetId, (admin.email || '').toLowerCase()]
+          [
+            updatedName,
+            updatedRole,
+            JSON.stringify(updatedPerms),
+            JSON.stringify(updatedCourses),
+            rawTargetId,
+            (d1Admin?.email || admin?.email || rawTargetId).toLowerCase(),
+          ]
         );
       }
     } catch (_) {}
+
+    // 2. Update Shared DB
+    if (admin) {
+      if (name) admin.name = name;
+      if (role) admin.role = role;
+      if (permissions) admin.permissions = permissions;
+      if (allowed_courses) admin.allowed_courses = allowed_courses;
+      if (password_hash) {
+        admin.password_hash = password_hash;
+        admin.raw_password = password;
+      }
+    }
 
     if (!db.auditLogs) db.auditLogs = [];
     db.auditLogs.unshift({
@@ -54,13 +102,16 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       admin_id: currentAdmin?.adminId || 'admin_master_1',
       admin_name: currentAdmin?.name || 'Admin',
       action_type: 'UPDATE_ADMIN_ROLE',
-      affected_entity_id: targetId,
-      details: `Updated administrative account "${admin.email}" (${admin.name}) with role "${admin.role}"`,
+      affected_entity_id: rawTargetId,
+      details: `Updated administrative account "${d1Admin?.email || admin?.email || rawTargetId}" (${updatedName}) with role "${updatedRole}"`,
       timestamp: new Date().toISOString(),
     });
 
     writeSharedDb(db);
-    return NextResponse.json({ success: true, message: `Admin account "${admin.name}" updated successfully`, admin });
+    return NextResponse.json({
+      success: true,
+      message: `Admin account "${updatedName}" updated successfully`,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -69,34 +120,68 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     const currentAdmin = getAuthenticatedAdmin();
-    const targetId = decodeURIComponent(params.id).trim();
+    const rawTargetId = decodeURIComponent(params.id).trim();
 
-    if (targetId === 'admin_master_1' || targetId.toLowerCase() === 'admin' || targetId.toLowerCase() === 'admin@examizo.com' || targetId.toLowerCase() === 'admin@exammaster.com') {
+    if (
+      rawTargetId === 'admin_master_1' ||
+      rawTargetId.toLowerCase() === 'admin' ||
+      rawTargetId.toLowerCase() === 'admin@examizo.com' ||
+      rawTargetId.toLowerCase() === 'admin@exammaster.com'
+    ) {
       return NextResponse.json({ error: 'Master Admin account cannot be removed' }, { status: 400 });
     }
 
+    // 1. Check in Cloudflare D1
+    let d1Admin: any = null;
+    try {
+      const d1Results = await queryD1('SELECT * FROM admins WHERE id = ? OR LOWER(email) = ? LIMIT 1', [
+        rawTargetId,
+        rawTargetId.toLowerCase(),
+      ]);
+      if (d1Results && d1Results.length > 0) {
+        d1Admin = d1Results[0];
+      }
+    } catch (_) {}
+
+    // 2. Check in Shared DB
     const db = readSharedDb();
     const adminIdx = (db.admins || []).findIndex(
       (a: any) =>
-        String(a._id) === targetId ||
-        String(a.id) === targetId ||
-        (a.email && a.email.toLowerCase() === targetId.toLowerCase())
+        String(a._id) === rawTargetId ||
+        String(a.id) === rawTargetId ||
+        (a.email && a.email.toLowerCase() === rawTargetId.toLowerCase())
     );
+    const sharedAdmin = adminIdx !== -1 ? db.admins[adminIdx] : null;
 
-    if (adminIdx === -1) {
-      return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
-    }
+    const targetEmail = (d1Admin?.email || sharedAdmin?.email || rawTargetId).toLowerCase().trim();
+    const targetName = d1Admin?.name || sharedAdmin?.name || 'Admin User';
+    const targetRole = d1Admin?.role || sharedAdmin?.role || '';
 
-    const removed = db.admins[adminIdx];
-    if (removed._id === 'admin_master_1' || removed.role === 'Super Admin' || removed.email === 'admin') {
+    if (
+      targetEmail === 'admin' ||
+      targetEmail === 'admin@examizo.com' ||
+      targetEmail === 'admin@exammaster.com' ||
+      targetRole === 'Super Admin' ||
+      rawTargetId === 'admin_master_1'
+    ) {
       return NextResponse.json({ error: 'Master Admin account cannot be removed' }, { status: 400 });
     }
 
-    db.admins.splice(adminIdx, 1);
-
+    // 3. Delete from Cloudflare D1
     try {
-      await executeD1('DELETE FROM admins WHERE id = ? OR LOWER(email) = ?', [targetId, (removed.email || '').toLowerCase()]);
+      await executeD1('DELETE FROM admins WHERE id = ? OR LOWER(email) = ?', [rawTargetId, targetEmail]);
     } catch (_) {}
+
+    // 4. Delete from Shared DB
+    if (adminIdx !== -1) {
+      db.admins.splice(adminIdx, 1);
+    }
+    db.admins = (db.admins || []).filter(
+      (a: any) =>
+        String(a._id) !== rawTargetId &&
+        String(a.id) !== rawTargetId &&
+        (a.email || '').toLowerCase().trim() !== targetEmail
+    );
 
     if (!db.auditLogs) db.auditLogs = [];
     db.auditLogs.unshift({
@@ -104,13 +189,16 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
       admin_id: currentAdmin?.adminId || 'admin_master_1',
       admin_name: currentAdmin?.name || 'Admin',
       action_type: 'REMOVE_ADMIN',
-      affected_entity_id: targetId,
-      details: `Removed administrative account "${removed.email}" (${removed.name})`,
+      affected_entity_id: rawTargetId,
+      details: `Removed administrative account "${targetEmail}" (${targetName})`,
       timestamp: new Date().toISOString(),
     });
 
     writeSharedDb(db);
-    return NextResponse.json({ success: true, message: `Admin account "${removed.name}" removed successfully` });
+    return NextResponse.json({
+      success: true,
+      message: `Admin account "${targetName}" removed successfully`,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
