@@ -69,6 +69,7 @@ export default function AdminResourcesPage() {
   // Local File Upload State
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [localFileName, setLocalFileName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleLocalPdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,8 +97,6 @@ export default function AdminResourcesPage() {
     };
     reader.readAsDataURL(file);
   };
-
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchData();

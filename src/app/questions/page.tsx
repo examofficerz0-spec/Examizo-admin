@@ -90,22 +90,6 @@ export default function QuestionManagementPage() {
   const [detailedExplanation, setDetailedExplanation] = useState('');
   const [error, setError] = useState('');
 
-  const handleQuestionImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image size must be less than 5MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImageUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
   // Bulk Question Modal
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkMode, setBulkMode] = useState<'excel' | 'text' | 'form'>('excel');
@@ -142,6 +126,22 @@ export default function QuestionManagementPage() {
   const [customTopics, setCustomTopics] = useState<Record<string, string[]>>({}); // subjectKey -> topics[]
 
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
+
+  const handleQuestionImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setImageUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const fetchData = async () => {
     if (!initialCache) setLoading(true);
