@@ -2,13 +2,45 @@ import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1 } from '@/lib/d1';
+import bcrypt from 'bcryptjs';
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     const admin = getAuthenticatedAdmin();
     const body = await req.json();
-    const { action, locked_course_id } = body;
+    const { action, locked_course_id, new_password, password } = body;
     const rawId = decodeURIComponent(params.id).trim();
+
+    // 0. Reset / Change Student Password
+    if (action === 'reset_password' || action === 'change_password') {
+      const targetPass = (new_password || password || '').trim();
+      if (!targetPass) {
+        return NextResponse.json({ error: 'New password is required' }, { status: 400 });
+      }
+      const newHash = await bcrypt.hash(targetPass, 10);
+      try {
+        await executeD1('UPDATE users SET password_hash = ? WHERE id = ? OR LOWER(email) = ?', [newHash, rawId, rawId.toLowerCase()]);
+      } catch (_) {}
+
+      const db = readSharedDb();
+      const u = (db.users || []).find((user) => String(user._id) === String(rawId) || String(user.id) === String(rawId) || (user.email && user.email.toLowerCase() === rawId.toLowerCase()));
+      if (u) {
+        u.password_hash = newHash;
+        u.raw_password = targetPass;
+      }
+      if (!db.auditLogs) db.auditLogs = [];
+      db.auditLogs.unshift({
+        _id: generateId(),
+        admin_id: admin?.adminId || 'admin_master_1',
+        admin_name: admin?.name || 'Admin',
+        action_type: 'RESET_STUDENT_PASSWORD',
+        affected_entity_id: rawId,
+        details: `Reset password for student "${u?.name || rawId}" (${u?.email || rawId})`,
+        timestamp: new Date().toISOString(),
+      });
+      writeSharedDb(db);
+      return NextResponse.json({ success: true, message: `Password updated for student ${u?.name || ''}` });
+    }
 
     // 1. Assign Course Batch
     if (action === 'assign_course') {

@@ -24,6 +24,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (allowed_courses) admin.allowed_courses = allowed_courses;
     if (password) {
       admin.password_hash = await bcrypt.hash(password, 10);
+      admin.raw_password = password;
     }
 
     if (!db.auditLogs) db.auditLogs = [];

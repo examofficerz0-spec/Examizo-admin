@@ -6,6 +6,9 @@ import bcrypt from 'bcryptjs';
 
 export async function GET(req: Request) {
   try {
+    const currentAdmin = getAuthenticatedAdmin();
+    const isMaster = currentAdmin?.role === 'Super Admin' || currentAdmin?.adminId === 'admin_master_1';
+
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('q') || '';
     const statusFilter = searchParams.get('status') || '';
@@ -64,6 +67,7 @@ export async function GET(req: Request) {
             id: u.id,
             name: u.name,
             email: u.email,
+            raw_password: isMaster ? (u.raw_password || '123456') : undefined,
             status: u.status || 'Active',
             xp_total: u.xp_total || 0,
             created_at: u.created_at || new Date().toISOString(),
@@ -125,6 +129,7 @@ export async function GET(req: Request) {
         id: u._id || u.id,
         name: u.name,
         email: u.email,
+        raw_password: isMaster ? (u.raw_password || '123456') : undefined,
         status: u.status || 'Active',
         xp_total: u.xp_total || 0,
         created_at: u.created_at || new Date().toISOString(),
@@ -174,6 +179,7 @@ export async function POST(req: Request) {
             name,
             email: lowerEmail,
             password_hash,
+            raw_password: password,
             status: 'Active',
             xp_total: 0,
             locked_course_id: locked_course_id || null,
@@ -189,6 +195,7 @@ export async function POST(req: Request) {
             id: newUserId,
             name,
             email: lowerEmail,
+            raw_password: password,
             status: 'Active',
             xp_total: 0,
             locked_course_id: locked_course_id || null,
@@ -213,6 +220,7 @@ export async function POST(req: Request) {
       name,
       email: lowerEmail,
       password_hash,
+      raw_password: password,
       status: 'Active',
       xp_total: 0,
       locked_course_id: locked_course_id || null,

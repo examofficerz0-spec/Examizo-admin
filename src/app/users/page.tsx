@@ -5,7 +5,34 @@ import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
-import { Users, Search, UserPlus, ShieldCheck, Trash2, X, AlertTriangle, Shield, Edit3, BookOpen, Key, CheckSquare, Square, Eye, EyeOff, Bell, Send, CheckCircle2, Lock, ChevronDown, ChevronUp, Layers, BarChart2 } from 'lucide-react';
+import {
+  Users,
+  Search,
+  UserPlus,
+  ShieldCheck,
+  Trash2,
+  X,
+  AlertTriangle,
+  Shield,
+  Edit3,
+  BookOpen,
+  Key,
+  Eye,
+  EyeOff,
+  Bell,
+  Send,
+  CheckCircle2,
+  Lock,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  BarChart2,
+  Copy,
+  Check,
+  Crown,
+  Settings,
+  Sparkles,
+} from 'lucide-react';
 
 const ALL_PERMISSIONS = [
   { id: 'manage_questions', label: 'Manage & Add Questions', desc: 'Create, edit, and curate topic question bank' },
@@ -17,6 +44,40 @@ const ALL_PERMISSIONS = [
 
 export default function UserManagementPage() {
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students');
+
+  // Authenticated Admin State & Master Controller Detection
+  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
+
+  useEffect(() => {
+    try {
+      const match = document.cookie.match(/admin_token=([^;]+)/);
+      if (match) {
+        const payloadBase64 = match[1].split('.')[1];
+        if (payloadBase64) {
+          const info = JSON.parse(atob(payloadBase64));
+          setCurrentAdmin(info);
+        }
+      }
+    } catch (_) {}
+
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.admin) {
+          setCurrentAdmin(data.admin);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const isMasterController = Boolean(
+    currentAdmin &&
+      (currentAdmin.adminId === 'admin_master_1' ||
+        currentAdmin.id === 'admin_master_1' ||
+        currentAdmin.role === 'Super Admin' ||
+        currentAdmin.email === 'admin' ||
+        currentAdmin.name === 'Master Controller')
+  );
 
   // Student State
   const initialCache = getAdminSwrCache<{ users?: any[]; admins?: any[]; courses?: any[] }>('admin_users_cache');
@@ -58,6 +119,30 @@ export default function UserManagementPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Master Controller Credentials Modal State
+  const [showMasterModal, setShowMasterModal] = useState(false);
+  const [masterName, setMasterName] = useState('Master Controller');
+  const [masterUsername, setMasterUsername] = useState('admin');
+  const [masterNewPassword, setMasterNewPassword] = useState('');
+  const [masterConfirmPassword, setMasterConfirmPassword] = useState('');
+  const [showMasterPass, setShowMasterPass] = useState(false);
+  const [masterUpdating, setMasterUpdating] = useState(false);
+  const [masterError, setMasterError] = useState('');
+
+  // Password Visibility Toggle Map for Table Items
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const toggleRevealPassword = (id: string) => {
+    setRevealedPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Quick Password Reset Modal State
+  const [quickResetModal, setQuickResetModal] = useState<{
+    entity: any;
+    targetType: 'student' | 'admin';
+    newPass: string;
+  } | null>(null);
+  const [quickResetSubmitting, setQuickResetSubmitting] = useState(false);
+
   // Send Notification Modal State
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notifTab, setNotifTab] = useState<'create' | 'manage'>('create');
@@ -72,6 +157,17 @@ export default function UserManagementPage() {
   const [notifType, setNotifType] = useState<'info' | 'alert' | 'announcement' | 'warning' | 'success'>('announcement');
   const [sendingNotif, setSendingNotif] = useState<boolean>(false);
   const [notifToast, setNotifToast] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyCredential = (text: string, id: string, label: string = 'Credentials') => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setNotifToast(`${label} copied to clipboard!`);
+    setTimeout(() => {
+      setCopiedId(null);
+      setNotifToast(null);
+    }, 3000);
+  };
 
   const fetchSentNotifications = async () => {
     setLoadingSentNotifs(true);
@@ -305,7 +401,7 @@ export default function UserManagementPage() {
       setAdminSwrCache('admin_users_cache', {
         ...cur,
         admins: adminsData.admins || [],
-        courses: coursesData.courses || []
+        courses: coursesData.courses || [],
       });
     } catch (err) {
       console.error(err);
@@ -366,10 +462,8 @@ export default function UserManagementPage() {
   const toggleCoursePermission = (courseId: string) => {
     if (courseId === 'all') {
       if (adminAllowedCourses.includes('all')) {
-        // Uncheck 'all' and select the first course or empty array
         setAdminAllowedCourses(courses.length > 0 ? [courses[0]._id] : []);
       } else {
-        // Check 'all'
         setAdminAllowedCourses(['all']);
       }
       return;
@@ -403,10 +497,75 @@ export default function UserManagementPage() {
     setAdminEmail(admin.email || '');
     setAdminPassword('');
     setAdminRole(admin.role || 'Question Contributor');
-    setAdminPermissions(admin.permissions || (admin.role === 'Super Admin' ? ['manage_questions', 'manage_courses', 'manage_mock_tests', 'manage_users', 'view_audit_logs'] : ['manage_questions']));
+    setAdminPermissions(
+      admin.permissions ||
+        (admin.role === 'Super Admin'
+          ? ['manage_questions', 'manage_courses', 'manage_mock_tests', 'manage_users', 'view_audit_logs']
+          : ['manage_questions'])
+    );
     setAdminAllowedCourses(admin.allowed_courses || ['all']);
     setAdminError('');
     setShowAddAdminModal(true);
+  };
+
+  // Master Controller Credentials Modal Handler
+  const openMasterCredentialsModal = () => {
+    const masterObj = admins.find((a) => a._id === 'admin_master_1' || a.role === 'Super Admin') || currentAdmin;
+    setMasterName(masterObj?.name || 'Master Controller');
+    setMasterUsername(masterObj?.email || 'admin');
+    setMasterNewPassword('');
+    setMasterConfirmPassword('');
+    setShowMasterPass(false);
+    setMasterError('');
+    setShowMasterModal(true);
+  };
+
+  const handleSaveMasterCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMasterError('');
+
+    if (masterNewPassword && masterNewPassword !== masterConfirmPassword) {
+      setMasterError('New passwords do not match');
+      return;
+    }
+
+    if (masterNewPassword && masterNewPassword.length < 4) {
+      setMasterError('Password must be at least 4 characters long');
+      return;
+    }
+
+    setMasterUpdating(true);
+    try {
+      const res = await fetch('/api/admins/master-credentials', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: masterName,
+          username: masterUsername,
+          newPassword: masterNewPassword || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMasterError(data.error || 'Failed to update credentials');
+      } else {
+        setShowMasterModal(false);
+        setNotifToast('Master Controller credentials updated successfully!');
+        setTimeout(() => setNotifToast(null), 4000);
+        setCurrentAdmin((prev: any) => ({
+          ...prev,
+          name: masterName,
+          email: masterUsername,
+        }));
+        fetchAdmins();
+        broadcastAdminChange('users');
+      }
+    } catch (err) {
+      setMasterError('Network error occurred while saving credentials');
+    } finally {
+      setMasterUpdating(false);
+    }
   };
 
   const handleManualOnboardStudent = async (e: React.FormEvent) => {
@@ -435,7 +594,10 @@ export default function UserManagementPage() {
         setStudentEmail('');
         setStudentPassword('');
         setStudentCourseId('');
+        setNotifToast(`Student ${studentName} onboarded successfully!`);
+        setTimeout(() => setNotifToast(null), 3500);
         fetchUsers();
+        broadcastAdminChange('users');
       }
     } catch (err: any) {
       setStudentError('An error occurred');
@@ -450,57 +612,125 @@ export default function UserManagementPage() {
     setSubmitting(true);
 
     try {
-      const isEdit = !!editingAdmin;
-      const url = isEdit ? `/api/admins/${editingAdmin._id}` : '/api/admins';
-      const method = isEdit ? 'PUT' : 'POST';
+      if (editingAdmin) {
+        const res = await fetch(`/api/admins/${editingAdmin._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: adminName,
+            role: adminRole,
+            permissions: adminPermissions,
+            allowed_courses: adminAllowedCourses,
+            password: adminPassword || undefined,
+          }),
+        });
 
-      const payload: any = {
-        name: adminName,
-        email: adminEmail,
-        role: adminRole,
-        permissions: adminPermissions,
-        allowed_courses: adminAllowedCourses,
-      };
-
-      if (!isEdit || adminPassword) {
-        payload.password = adminPassword;
-      }
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setAdminError(data.error || 'Failed to save administrative account');
+        const data = await res.json();
+        if (!res.ok) {
+          setAdminError(data.error || 'Failed to update admin account');
+        } else {
+          setShowAddAdminModal(false);
+          setNotifToast(`Admin permissions updated for ${adminName}!`);
+          setTimeout(() => setNotifToast(null), 3500);
+          fetchAdmins();
+          broadcastAdminChange('users');
+        }
       } else {
-        setShowAddAdminModal(false);
-        fetchAdmins();
+        const res = await fetch('/api/admins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: adminName,
+            email: adminEmail,
+            password: adminPassword,
+            role: adminRole,
+            permissions: adminPermissions,
+            allowed_courses: adminAllowedCourses,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setAdminError(data.error || 'Failed to create admin account');
+        } else {
+          setShowAddAdminModal(false);
+          setNotifToast(`New admin ${adminName} assigned successfully!`);
+          setTimeout(() => setNotifToast(null), 3500);
+          fetchAdmins();
+          broadcastAdminChange('users');
+        }
       }
-    } catch (err: any) {
+    } catch (err) {
       setAdminError('An error occurred');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleQuickResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickResetModal || !quickResetModal.newPass.trim()) return;
+
+    setQuickResetSubmitting(true);
+    try {
+      if (quickResetModal.targetType === 'admin') {
+        const res = await fetch(`/api/admins/${quickResetModal.entity._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: quickResetModal.newPass.trim() }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setNotifToast(`Password updated for admin ${quickResetModal.entity.name}!`);
+          setTimeout(() => setNotifToast(null), 3500);
+          setQuickResetModal(null);
+          fetchAdmins();
+          broadcastAdminChange('users');
+        } else {
+          alert(data.error || 'Failed to update password');
+        }
+      } else {
+        const res = await fetch(`/api/users/${encodeURIComponent(quickResetModal.entity._id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset_password', new_password: quickResetModal.newPass.trim() }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setNotifToast(`Password updated for student ${quickResetModal.entity.name}!`);
+          setTimeout(() => setNotifToast(null), 3500);
+          setQuickResetModal(null);
+          fetchUsers();
+          broadcastAdminChange('users');
+        } else {
+          alert(data.error || 'Failed to update password');
+        }
+      }
+    } catch (err) {
+      alert('Error updating password');
+    } finally {
+      setQuickResetSubmitting(false);
+    }
+  };
+
   const executeConfirmedAction = async () => {
     if (!activeActionModal) return;
     const { entity, targetType, type } = activeActionModal;
+    const targetId = entity._id || entity.id;
 
     try {
-      const targetId = entity._id || entity.id || entity.email;
       if (targetType === 'admin') {
-        const res = await fetch(`/api/admins/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+        const res = await fetch(`/api/admins/${targetId}`, { method: 'DELETE' });
         const data = await res.json();
         setActiveActionModal(null);
-        if (res.ok) {
+        if (!res.ok) {
+          alert(data.error || 'Failed to delete admin');
+        } else {
           setNotifToast(data.message || 'Admin account removed successfully!');
           setTimeout(() => setNotifToast(null), 3500);
         }
         fetchAdmins();
+        broadcastAdminChange('users');
       } else {
         if (type === 'delete') {
           const res = await fetch(`/api/users/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
@@ -526,6 +756,7 @@ export default function UserManagementPage() {
           }
         }
         fetchUsers();
+        broadcastAdminChange('users');
       }
     } catch (err) {
       console.error(err);
@@ -533,19 +764,24 @@ export default function UserManagementPage() {
     }
   };
 
+  const masterAdminRecord = admins.find((a) => a._id === 'admin_master_1' || a.role === 'Super Admin');
+
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader title="User & Admin Management" subtitle="Manage student accounts and assign platform administrative credentials (FR-36, FR-37)" />
+        <AdminHeader
+          title="User & Admin Management"
+          subtitle="Manage student accounts, credentials, and configure administrative RBAC personnel (FR-36, FR-37)"
+        />
 
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
           {/* Category Tabs */}
           <div className="flex border-b border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setActiveTab('students')}
-              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors ${
+              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'students'
                   ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -555,7 +791,7 @@ export default function UserManagementPage() {
             </button>
             <button
               onClick={() => setActiveTab('admins')}
-              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors ${
+              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'admins'
                   ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -598,32 +834,19 @@ export default function UserManagementPage() {
                 ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              {/* Action Bar */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search student name or email..."
+                      placeholder="Search students by name or email..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full text-xs pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
+                      className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-white"
                     />
                   </div>
-
-                  {/* Course Batch Classification Filter Dropdown */}
-                  <select
-                    value={courseFilter}
-                    onChange={(e) => setCourseFilter(e.target.value)}
-                    className="text-xs p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-medium cursor-pointer"
-                  >
-                    <option value="">All Course Batches</option>
-                    {courses.map((c) => (
-                      <option key={c._id} value={c._id}>
-                        📚 {c.name} {c.category ? `(${c.category})` : ''}
-                      </option>
-                    ))}
-                  </select>
 
                   <select
                     value={statusFilter}
@@ -676,6 +899,7 @@ export default function UserManagementPage() {
                     <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
                       <tr>
                         <th className="p-4">Student</th>
+                        {isMasterController && <th className="p-4">Login & Password Credential</th>}
                         <th className="p-4">Locked Course</th>
                         <th className="p-4">XP Total</th>
                         <th className="p-4">Status</th>
@@ -686,6 +910,8 @@ export default function UserManagementPage() {
                       {groupedUsers.map(({ rootEmail, primary: u, subProfiles }) => {
                         const hasSubProfiles = subProfiles.length > 0;
                         const isExpanded = !!expandedEmails[rootEmail];
+                        const uPass = u.raw_password || '123456';
+                        const isPassRevealed = !!revealedPasswords[u._id];
 
                         return (
                           <React.Fragment key={rootEmail}>
@@ -702,7 +928,6 @@ export default function UserManagementPage() {
                                 </button>
                                 <div className="text-[11px] font-normal text-slate-500">{u.email}</div>
 
-                                {/* Dropdown toggle button shown ONLY if sub-profiles were created under this account */}
                                 {hasSubProfiles && (
                                   <div className="mt-2">
                                     <button
@@ -717,6 +942,43 @@ export default function UserManagementPage() {
                                   </div>
                                 )}
                               </td>
+
+                              {/* Master Controller Password Credential View */}
+                              {isMasterController && (
+                                <td className="p-4">
+                                  <div className="inline-flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                    <Key className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="font-mono text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                      {isPassRevealed ? uPass : '••••••••'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRevealPassword(u._id)}
+                                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                      title={isPassRevealed ? 'Hide Password' : 'Show Password'}
+                                    >
+                                      {isPassRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyCredential(`Email: ${u.email}\nPassword: ${uPass}`, u._id, `${u.name}'s Password`)}
+                                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+                                      title="Copy Login Credentials"
+                                    >
+                                      {copiedId === u._id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuickResetModal({ entity: u, targetType: 'student', newPass: '' })}
+                                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-amber-600 transition-colors cursor-pointer"
+                                      title="Change / Reset Student Password"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+
                               <td className="p-4 font-medium text-slate-700 dark:text-slate-300">
                                 {u.locked_course_id?.name ? (
                                   <div className="flex items-center gap-2">
@@ -748,165 +1010,190 @@ export default function UserManagementPage() {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-4 font-bold text-emerald-600 dark:text-emerald-400">
+
+                              <td className="p-4 font-extrabold text-emerald-600 dark:text-emerald-400">
                                 {(u.xp_total || 0).toLocaleString()} XP
                               </td>
+
                               <td className="p-4">
                                 <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${
                                     u.status === 'Active'
-                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                                      : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                                      : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
                                   }`}
                                 >
-                                  {u.status}
+                                  {u.status || 'Active'}
                                 </span>
                               </td>
-                              <td className="p-4 text-right space-x-2">
-                                <button
-                                  onClick={() => openSendNotifForUser(u)}
-                                  type="button"
-                                  className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded cursor-pointer"
-                                  title="Send Notification to this student"
-                                >
-                                  <Bell className="w-3.5 h-3.5 inline mr-1" /> Notify
-                                </button>
 
-                                {u.status === 'Active' ? (
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
                                   <button
-                                    onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'suspend' })}
-                                    className="px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded cursor-pointer"
+                                    type="button"
+                                    onClick={() => openSendNotifForUser(u)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded-md cursor-pointer"
+                                    title="Send Private Notification"
                                   >
-                                    Suspend
+                                    <Bell className="w-3.5 h-3.5" />
                                   </button>
-                                ) : (
+
+                                  {u.status === 'Active' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'suspend' })}
+                                      className="px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded-md transition-colors cursor-pointer"
+                                    >
+                                      Suspend
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'activate' })}
+                                      className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded-md transition-colors cursor-pointer"
+                                    >
+                                      Reinstate
+                                    </button>
+                                  )}
+
                                   <button
-                                    onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'activate' })}
-                                    className="px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded cursor-pointer"
+                                    type="button"
+                                    onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'delete' })}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md transition-colors cursor-pointer"
+                                    title="Permanently Delete Account"
                                   >
-                                    Reinstate
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                )}
-                                <button
-                                  onClick={() => setActiveActionModal({ entity: u, targetType: 'student', type: 'delete' })}
-                                  className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
-                                  title="Delete Student Account"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                </div>
                               </td>
                             </tr>
 
-                            {/* Dropdown Panel showing ONLY the sub-profiles created under this account */}
+                            {/* Collapsible Sub-Profiles Row */}
                             {hasSubProfiles && isExpanded && (
-                              <tr className="bg-purple-50/50 dark:bg-purple-950/30 border-b border-purple-200 dark:border-purple-900/50">
-                                <td colSpan={5} className="p-3.5 pl-6 sm:pl-10">
-                                  <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 rounded-2xl p-4 shadow-sm space-y-3">
-                                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/80 flex items-center justify-center">
-                                          <Layers className="w-3.5 h-3.5 text-purple-600 dark:text-purple-300" />
-                                        </div>
-                                        <span className="text-xs font-extrabold text-purple-900 dark:text-purple-300">
-                                          Sub-Profiles Created Under {u.name} ({rootEmail}):
-                                        </span>
-                                      </div>
-                                      <span className="text-[10px] font-extrabold px-2 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded-full">
-                                        {subProfiles.length} Sub-Profile{subProfiles.length > 1 ? 's' : ''} Linked
-                                      </span>
+                              <tr className="bg-purple-50/30 dark:bg-purple-950/20 border-y border-purple-100 dark:border-purple-900/40">
+                                <td colSpan={isMasterController ? 6 : 5} className="p-3 pl-8">
+                                  <div className="space-y-2">
+                                    <div className="text-[11px] font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1.5 uppercase tracking-wider">
+                                      <Users className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Linked Sub-Profiles for {rootEmail} ({subProfiles.length})</span>
                                     </div>
 
-                                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                      {subProfiles.map((p, idx) => (
-                                        <div key={p._id} className="py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-                                          <div className="flex items-center gap-3">
-                                            <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-extrabold text-[11px] flex items-center justify-center shrink-0">
-                                              {idx + 1}
-                                            </span>
-                                            <div>
-                                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                                {p.name}
-                                                <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[9px] font-extrabold rounded uppercase">
-                                                  Sub-Profile
-                                                </span>
+                                    <div className="grid grid-cols-1 divide-y divide-purple-100 dark:divide-purple-900/30 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 overflow-hidden shadow-2xs">
+                                      {subProfiles.map((p) => {
+                                        const pPass = p.raw_password || '123456';
+                                        const isPPassRevealed = !!revealedPasswords[p._id];
+
+                                        return (
+                                          <div key={p._id} className="p-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                              <span className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 font-extrabold flex items-center justify-center text-xs">
+                                                {p.name.charAt(0).toUpperCase()}
+                                              </span>
+                                              <div>
+                                                <p className="font-bold text-slate-900 dark:text-white text-xs">{p.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-mono">{p.email}</p>
                                               </div>
-                                              <div className="text-[10px] font-mono text-slate-500">{p.email}</div>
                                             </div>
-                                          </div>
 
-                                          <div className="flex items-center gap-3">
-                                            {/* Course Badge */}
-                                            <div>
-                                              {p.locked_course_id?.name ? (
-                                                <span className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold rounded-lg border border-blue-200 dark:border-blue-800 text-[10px] flex items-center gap-1.5">
-                                                  <Lock className="w-3 h-3 text-blue-600 shrink-0" />
-                                                  <span>{p.locked_course_id.name}</span>
-                                                </span>
-                                              ) : (
-                                                <span className="px-2 py-0.5 bg-amber-50 text-amber-700 font-semibold rounded-md text-[10px]">
-                                                  Course Pending
-                                                </span>
+                                            <div className="flex items-center gap-4">
+                                              {/* Course Tag */}
+                                              <div>
+                                                {p.locked_course_id?.name ? (
+                                                  <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold rounded text-[10px] border border-blue-200 dark:border-blue-800">
+                                                    {p.locked_course_id.name}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-[10px] text-slate-400 italic">No Course</span>
+                                                )}
+                                              </div>
+
+                                              {/* Master Password View for Sub-Profile */}
+                                              {isMasterController && (
+                                                <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                                                  <Key className="w-3 h-3 text-amber-500" />
+                                                  <span className="font-mono text-[10px] font-bold">
+                                                    {isPPassRevealed ? pPass : '••••••'}
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleRevealPassword(p._id)}
+                                                    className="p-0.5 hover:text-slate-900 cursor-pointer"
+                                                  >
+                                                    {isPPassRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => copyCredential(`Email: ${p.email}\nPassword: ${pPass}`, p._id, `${p.name}'s Password`)}
+                                                    className="p-0.5 hover:text-blue-600 cursor-pointer"
+                                                  >
+                                                    {copiedId === p._id ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                                                  </button>
+                                                </div>
                                               )}
-                                            </div>
 
-                                            {/* XP */}
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-400 text-[11px]">
-                                              {(p.xp_total || 0).toLocaleString()} XP
-                                            </span>
+                                              {/* XP */}
+                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-[11px]">
+                                                {(p.xp_total || 0).toLocaleString()} XP
+                                              </span>
 
-                                            {/* Status */}
-                                            <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                              p.status === 'Active' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                                            }`}>
-                                              {p.status}
-                                            </span>
-
-                                            {/* Actions */}
-                                            <div className="flex items-center gap-1.5 ml-2">
-                                              <button
-                                                type="button"
-                                                onClick={() => openAssignCourseModal(p)}
-                                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-[10px] rounded flex items-center gap-1 cursor-pointer"
+                                              {/* Status */}
+                                              <span
+                                                className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                  p.status === 'Active'
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                                }`}
                                               >
-                                                <Edit3 className="w-3 h-3" /> Assign/Edit
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => openSendNotifForUser(p)}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded cursor-pointer"
-                                                title="Send Notification"
-                                              >
-                                                <Bell className="w-3.5 h-3.5" />
-                                              </button>
-                                              {p.status === 'Active' ? (
+                                                {p.status}
+                                              </span>
+
+                                              {/* Actions */}
+                                              <div className="flex items-center gap-1.5 ml-2">
                                                 <button
                                                   type="button"
-                                                  onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'suspend' })}
-                                                  className="px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded cursor-pointer"
+                                                  onClick={() => openAssignCourseModal(p)}
+                                                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-[10px] rounded flex items-center gap-1 cursor-pointer"
                                                 >
-                                                  Suspend
+                                                  <Edit3 className="w-3 h-3" /> Assign/Edit
                                                 </button>
-                                              ) : (
                                                 <button
                                                   type="button"
-                                                  onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'activate' })}
-                                                  className="px-2 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded cursor-pointer"
+                                                  onClick={() => openSendNotifForUser(p)}
+                                                  className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded cursor-pointer"
+                                                  title="Send Notification"
                                                 >
-                                                  Reinstate
+                                                  <Bell className="w-3.5 h-3.5" />
                                                 </button>
-                                              )}
-                                              <button
-                                                type="button"
-                                                onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'delete' })}
-                                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                                                title="Delete Profile"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                              </button>
+                                                {p.status === 'Active' ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'suspend' })}
+                                                    className="px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded cursor-pointer"
+                                                  >
+                                                    Suspend
+                                                  </button>
+                                                ) : (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'activate' })}
+                                                    className="px-2 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded cursor-pointer"
+                                                  >
+                                                    Reinstate
+                                                  </button>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setActiveActionModal({ entity: p, targetType: 'student', type: 'delete' })}
+                                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                                                  title="Delete Profile"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
                                             </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 </td>
@@ -925,15 +1212,48 @@ export default function UserManagementPage() {
           {/* ADMINS TAB CONTENT */}
           {activeTab === 'admins' && (
             <div className="space-y-6">
+              {/* Master Controller Security Center Banner (Visible only if logged in as Master Controller) */}
+              {isMasterController && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-[#0B192C] text-white border border-indigo-500/30 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0">
+                      <Crown className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-extrabold tracking-wide">Master Controller Security Hub</h4>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-black uppercase tracking-wider border border-amber-400/30">
+                          Primary Authority
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Active Master Login ID: <strong className="text-white font-mono">{masterAdminRecord?.email || currentAdmin?.email || 'admin'}</strong> • Full Super Admin platform controls
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openMasterCredentialsModal}
+                    className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl flex items-center gap-2 shadow-md shadow-amber-500/20 transition-all cursor-pointer shrink-0"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Change Master Login Credentials
+                  </button>
+                </div>
+              )}
+
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">Active Administrative Credentials & Roles</h3>
-                  <p className="text-xs text-slate-500">Configure role-based access control (RBAC), specific action permissions, and assigned courses.</p>
+                  <p className="text-xs text-slate-500">
+                    Configure role-based access control (RBAC), specific action permissions, and assigned courses.
+                  </p>
                 </div>
                 <button
                   onClick={openCreateAdminModal}
                   type="button"
-                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
                 >
                   <Shield className="w-4 h-4" />
                   Assign New Admin
@@ -948,6 +1268,7 @@ export default function UserManagementPage() {
                     <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
                       <tr>
                         <th className="p-4">Admin Personnel</th>
+                        {isMasterController && <th className="p-4">Login & Password</th>}
                         <th className="p-4">Assigned Role</th>
                         <th className="p-4">Assigned Course Scope</th>
                         <th className="p-4">Action Permissions</th>
@@ -957,6 +1278,10 @@ export default function UserManagementPage() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       {admins.map((a) => {
                         const isSuper = a.role === 'Super Admin' || (a.permissions && a.permissions.includes('all'));
+                        const isMasterRow = a._id === 'admin_master_1' || a.email === 'admin' || a.role === 'Super Admin';
+                        const aPass = a.raw_password || (isSuper ? 'Admin@123456' : 'Admin@123456');
+                        const isPassRevealed = !!revealedPasswords[a._id];
+
                         const allowedCourseNames = (a.allowed_courses || []).includes('all')
                           ? 'All Courses (Unrestricted)'
                           : (a.allowed_courses || [])
@@ -967,22 +1292,75 @@ export default function UserManagementPage() {
                           <tr key={a._id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
                             <td className="p-4 font-semibold text-slate-900 dark:text-white">
                               <div className="flex items-center gap-2">
-                                <Shield className="w-4 h-4 text-brand-700 dark:text-brand-400 shrink-0" />
+                                {isSuper ? (
+                                  <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+                                ) : (
+                                  <Shield className="w-4 h-4 text-brand-700 dark:text-brand-400 shrink-0" />
+                                )}
                                 <div>
-                                  <div>{a.name}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{a.name}</span>
+                                    {isMasterRow && (
+                                      <span className="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold text-[9px]">
+                                        Master
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="text-[11px] font-mono font-normal text-slate-500">{a.email}</div>
                                 </div>
                               </div>
                             </td>
+
+                            {/* Password Credential Column (Only visible if logged in as Master Controller) */}
+                            {isMasterController && (
+                              <td className="p-4">
+                                <div className="inline-flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                  <Key className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  <span className="font-mono text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                    {isPassRevealed ? aPass : '••••••••'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRevealPassword(a._id)}
+                                    className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                    title={isPassRevealed ? 'Hide Password' : 'Show Password'}
+                                  >
+                                    {isPassRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyCredential(`Username/Email: ${a.email}\nPassword: ${aPass}`, a._id, `${a.name}'s Password`)}
+                                    className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+                                    title="Copy Credentials"
+                                  >
+                                    {copiedId === a._id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                  {!isMasterRow && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuickResetModal({ entity: a, targetType: 'admin', newPass: '' })}
+                                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-amber-600 transition-colors cursor-pointer"
+                                      title="Reset Admin Password"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+
                             <td className="p-4">
-                              <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
-                                isSuper
-                                  ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800'
-                                  : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
-                              }`}>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                                  isSuper
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
+                                }`}
+                              >
                                 {a.role || 'Super Admin'}
                               </span>
                             </td>
+
                             <td className="p-4 max-w-xs">
                               <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
                                 <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -991,6 +1369,7 @@ export default function UserManagementPage() {
                                 </span>
                               </div>
                             </td>
+
                             <td className="p-4">
                               <div className="flex flex-wrap gap-1">
                                 {isSuper ? (
@@ -1001,27 +1380,42 @@ export default function UserManagementPage() {
                                   <span className="text-[11px] text-slate-400 italic">No explicit actions</span>
                                 ) : (
                                   (a.permissions || []).map((perm: string) => (
-                                    <span key={perm} className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                    <span
+                                      key={perm}
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                    >
                                       {ALL_PERMISSIONS.find((p) => p.id === perm)?.label || perm}
                                     </span>
                                   ))
                                 )}
                               </div>
                             </td>
+
                             <td className="p-4 text-right">
-                              {a._id === 'admin_master_1' || a.email === 'admin' ? (
-                                <span className="text-[11px] font-bold text-slate-400 italic">Primary Admin</span>
+                              {isMasterRow ? (
+                                isMasterController ? (
+                                  <button
+                                    type="button"
+                                    onClick={openMasterCredentialsModal}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-lg flex items-center gap-1.5 ml-auto shadow-xs transition-all cursor-pointer"
+                                  >
+                                    <Settings className="w-3.5 h-3.5" />
+                                    Change Credentials
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] font-bold text-slate-400 italic">Primary Admin</span>
+                                )
                               ) : (
                                 <div className="flex items-center justify-end gap-2">
                                   <button
                                     onClick={() => openEditAdminModal(a)}
-                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-md flex items-center gap-1 transition-colors"
+                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-md flex items-center gap-1 transition-colors cursor-pointer"
                                   >
                                     <Edit3 className="w-3.5 h-3.5" /> Edit Access
                                   </button>
                                   <button
                                     onClick={() => setActiveActionModal({ entity: a, targetType: 'admin', type: 'delete' })}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
                                     title="Remove Admin Account"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -1040,6 +1434,193 @@ export default function UserManagementPage() {
           )}
         </main>
       </div>
+
+      {/* MASTER CONTROLLER CREDENTIALS MODAL */}
+      {showMasterModal && isMasterController && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">Master Controller Credentials</h3>
+                  <p className="text-[11px] text-slate-500">Update Master login identifier and master password</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMasterModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {masterError && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 text-xs rounded-xl font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{masterError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveMasterCredentials} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Master Display Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={masterName}
+                  onChange={(e) => setMasterName(e.target.value)}
+                  placeholder="e.g. Master Controller"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Master Login ID / Username / Email
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={masterUsername}
+                  onChange={(e) => setMasterUsername(e.target.value)}
+                  placeholder="admin"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono font-bold"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">You will use this ID or username to log in to the admin portal.</p>
+              </div>
+
+              <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl space-y-3">
+                <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-extrabold text-[11px]">
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Update Password (Leave blank to keep unchanged)</span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    New Master Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showMasterPass ? 'text' : 'password'}
+                      value={masterNewPassword}
+                      onChange={(e) => setMasterNewPassword(e.target.value)}
+                      placeholder="Enter new master password..."
+                      className="w-full p-2.5 pr-9 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowMasterPass(!showMasterPass)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                    >
+                      {showMasterPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {masterNewPassword && (
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type={showMasterPass ? 'text' : 'password'}
+                      value={masterConfirmPassword}
+                      onChange={(e) => setMasterConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new master password..."
+                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowMasterModal(false)}
+                  className="px-4 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={masterUpdating}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {masterUpdating ? 'Saving...' : 'Update Master Credentials'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK RESET PASSWORD MODAL (STUDENT / ADMIN) */}
+      {quickResetModal && isMasterController && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 border border-blue-200 dark:border-blue-900">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Set New Password for {quickResetModal.entity.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-mono">{quickResetModal.entity.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickResetModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickResetSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={quickResetModal.newPass}
+                  onChange={(e) => setQuickResetModal({ ...quickResetModal, newPass: e.target.value })}
+                  placeholder="Enter new password (e.g. Student@2026)..."
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white font-bold"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setQuickResetModal(null)}
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickResetSubmitting || !quickResetModal.newPass.trim()}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl disabled:opacity-50 cursor-pointer"
+                >
+                  {quickResetSubmitting ? 'Saving...' : 'Set Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Onboard Student Modal */}
       {showAddStudentModal && (
@@ -1123,14 +1704,14 @@ export default function UserManagementPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddStudentModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white font-bold rounded-lg disabled:opacity-50"
+                  className="px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white font-bold rounded-lg disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? 'Onboarding...' : 'Create Account'}
                 </button>
@@ -1151,7 +1732,7 @@ export default function UserManagementPage() {
                   {editingAdmin ? 'Edit Admin Role & Permissions' : 'Assign New Admin Personnel'}
                 </h3>
               </div>
-              <button onClick={() => setShowAddAdminModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowAddAdminModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1181,7 +1762,7 @@ export default function UserManagementPage() {
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
                     placeholder="sarah@exammaster.com"
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white disabled:opacity-60"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white disabled:opacity-60 font-mono"
                   />
                 </div>
               </div>
@@ -1196,7 +1777,7 @@ export default function UserManagementPage() {
                     required={!editingAdmin}
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder={editingAdmin ? (editingAdmin.raw_password ? `Current: ${editingAdmin.raw_password}` : '••••••••') : 'Enter password...'}
                     className="w-full p-2 pr-9 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono"
                   />
                   <button
@@ -1305,14 +1886,14 @@ export default function UserManagementPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddAdminModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 dark:text-slate-300 font-semibold rounded-lg"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 dark:text-slate-300 font-semibold rounded-lg cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg disabled:opacity-50"
+                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? 'Saving Account...' : editingAdmin ? 'Update Access & Permissions' : 'Assign Admin Account'}
                 </button>
@@ -1326,13 +1907,15 @@ export default function UserManagementPage() {
       {activeActionModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
-              activeActionModal.type === 'activate'
-                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
-                : activeActionModal.type === 'suspend'
-                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
-                : 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
-            }`}>
+            <div
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto ${
+                activeActionModal.type === 'activate'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                  : activeActionModal.type === 'suspend'
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                  : 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+              }`}
+            >
               <AlertTriangle className="w-6 h-6" />
             </div>
 
@@ -1355,14 +1938,14 @@ export default function UserManagementPage() {
               <button
                 type="button"
                 onClick={() => setActiveActionModal(null)}
-                className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={executeConfirmedAction}
-                className={`px-5 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-md transition-all ${
+                className={`px-5 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer ${
                   activeActionModal.type === 'activate'
                     ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
                     : activeActionModal.type === 'suspend'
@@ -1383,7 +1966,7 @@ export default function UserManagementPage() {
         </div>
       )}
 
-      {/* Notification Success Toast */}
+      {/* Notification Toast */}
       {notifToast && (
         <div className="fixed bottom-6 right-6 z-50 px-5 py-3 bg-slate-900 text-white font-bold text-xs rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-bounce">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -1408,7 +1991,7 @@ export default function UserManagementPage() {
               <button
                 type="button"
                 onClick={() => setShowNotificationModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1445,11 +2028,8 @@ export default function UserManagementPage() {
 
             {notifTab === 'create' ? (
               <form onSubmit={handleSendNotification} className="space-y-4 text-xs">
-                {/* Recipient Target Selector */}
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Recipient Audience
-                  </label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Recipient Audience</label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
@@ -1487,12 +2067,9 @@ export default function UserManagementPage() {
                   </div>
                 </div>
 
-                {/* Single Student Selector */}
                 {notifTargetType === 'user' && (
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Select Target Student
-                    </label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Select Target Student</label>
                     <select
                       value={notifTargetUserId}
                       onChange={(e) => setNotifTargetUserId(e.target.value)}
@@ -1509,12 +2086,9 @@ export default function UserManagementPage() {
                   </div>
                 )}
 
-                {/* Course Batch Selector */}
                 {notifTargetType === 'course' && (
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Select Course Batch
-                    </label>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Select Course Batch</label>
                     <select
                       value={notifTargetCourseId}
                       onChange={(e) => setNotifTargetCourseId(e.target.value)}
@@ -1535,11 +2109,8 @@ export default function UserManagementPage() {
                   </div>
                 )}
 
-                {/* Notification Category */}
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Notification Category
-                  </label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Notification Category</label>
                   <select
                     value={notifType}
                     onChange={(e) => setNotifType(e.target.value as any)}
@@ -1553,11 +2124,8 @@ export default function UserManagementPage() {
                   </select>
                 </div>
 
-                {/* Title */}
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Notification Title
-                  </label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Notification Title</label>
                   <input
                     type="text"
                     required
@@ -1568,11 +2136,8 @@ export default function UserManagementPage() {
                   />
                 </div>
 
-                {/* Message Content */}
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Message Content
-                  </label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Message Content</label>
                   <textarea
                     required
                     rows={3}
@@ -1583,7 +2148,6 @@ export default function UserManagementPage() {
                   />
                 </div>
 
-                {/* Form Buttons */}
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
@@ -1656,6 +2220,7 @@ export default function UserManagementPage() {
           </div>
         </div>
       )}
+
       {/* Assign Course Modal */}
       {showAssignCourseModal && assigningStudent && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -1673,7 +2238,7 @@ export default function UserManagementPage() {
               <button
                 type="button"
                 onClick={() => setShowAssignCourseModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1707,7 +2272,7 @@ export default function UserManagementPage() {
                 <button
                   type="button"
                   onClick={() => setShowAssignCourseModal(false)}
-                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs"
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Cancel
                 </button>

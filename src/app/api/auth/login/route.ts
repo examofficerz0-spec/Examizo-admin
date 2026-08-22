@@ -27,14 +27,63 @@ export async function POST(req: Request) {
       return options;
     };
 
-    // Explicit master admin shortcut ("admin" / "admin" / "admin@examizo.com")
-    if (
+    // Check Master Controller credentials in sharedDb
+    const db = readSharedDb();
+    const masterAdmin = (db.admins || []).find(
+      (a: any) => a._id === 'admin_master_1' || a.id === 'admin_master_1' || a.role === 'Super Admin'
+    );
+
+    if (masterAdmin) {
+      const masterEmail = (masterAdmin.email || 'admin').toLowerCase().trim();
+      const isMasterIdentifier =
+        lowerInput === masterEmail ||
+        lowerInput === 'admin' ||
+        lowerInput === 'admin@exammaster.com' ||
+        lowerInput === 'admin@examizo.com';
+
+      if (isMasterIdentifier) {
+        const isMasterPassMatch =
+          (masterAdmin.password_hash && (await bcrypt.compare(password, masterAdmin.password_hash))) ||
+          password === masterAdmin.raw_password ||
+          password === 'admin' ||
+          password === 'Admin@123456';
+
+        if (isMasterPassMatch) {
+          const token = signAdminToken(
+            {
+              adminId: 'admin_master_1',
+              email: masterAdmin.email || 'admin',
+              name: masterAdmin.name || 'Master Controller',
+              role: 'Super Admin',
+              permissions: ['all'],
+              allowed_courses: ['all'],
+            },
+            !!rememberMe
+          );
+
+          const response = NextResponse.json({
+            success: true,
+            admin: {
+              id: 'admin_master_1',
+              name: masterAdmin.name || 'Master Controller',
+              email: masterAdmin.email || 'admin',
+              role: 'Super Admin',
+              permissions: ['all'],
+              allowed_courses: ['all'],
+            },
+          });
+
+          response.cookies.set('admin_token', token, getCookieOptions());
+          return response;
+        }
+      }
+    } else if (
       (lowerInput === 'admin' || lowerInput === 'admin@exammaster.com' || lowerInput === 'admin@examizo.com') &&
       (password === 'admin' || password === 'Admin@123456')
     ) {
       const token = signAdminToken({
         adminId: 'admin_master_1',
-        email: 'admin@examizo.com',
+        email: 'admin',
         name: 'Master Controller',
         role: 'Super Admin',
         permissions: ['all'],
@@ -43,11 +92,10 @@ export async function POST(req: Request) {
 
       const response = NextResponse.json({
         success: true,
-        admin: { id: 'admin_master_1', name: 'Master Controller', email: 'admin@exammaster.com', role: 'Super Admin', permissions: ['all'], allowed_courses: ['all'] },
+        admin: { id: 'admin_master_1', name: 'Master Controller', email: 'admin', role: 'Super Admin', permissions: ['all'], allowed_courses: ['all'] },
       });
 
       response.cookies.set('admin_token', token, getCookieOptions());
-
       return response;
     }
 
@@ -87,8 +135,8 @@ export async function POST(req: Request) {
     } catch (_) {}
 
     // 2. Shared JSON DB fallback
-    const db = readSharedDb();
-    const admin = (db.admins || []).find((a) => (a.email || '').toLowerCase() === lowerInput || lowerInput === 'admin');
+    const sharedDbData = readSharedDb();
+    const admin = (sharedDbData.admins || []).find((a) => (a.email || '').toLowerCase() === lowerInput || lowerInput === 'admin');
     if (!admin) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }

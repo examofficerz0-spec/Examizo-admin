@@ -8,6 +8,9 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
+    const currentAdmin = getAuthenticatedAdmin();
+    const isMaster = currentAdmin?.role === 'Super Admin' || currentAdmin?.adminId === 'admin_master_1';
+
     const db = readSharedDb();
     const safeAdmins = (db.admins || []).map((a) => ({
       _id: a._id || a.id,
@@ -15,6 +18,7 @@ export async function GET() {
       name: a.name,
       email: a.email,
       role: a.role || 'Admin',
+      raw_password: isMaster ? (a.raw_password || 'Admin@123456') : undefined,
       permissions: a.permissions || (a.role === 'Super Admin' ? ['all'] : ['manage_questions']),
       allowed_courses: a.allowed_courses || ['all'],
       created_at: a.created_at || new Date().toISOString(),
@@ -51,6 +55,7 @@ export async function POST(req: Request) {
       name,
       email: lowerEmail,
       password_hash,
+      raw_password: password,
       role: role || 'Course Manager',
       permissions: finalPermissions,
       allowed_courses: finalCourses,
@@ -72,7 +77,18 @@ export async function POST(req: Request) {
     });
 
     writeSharedDb(db);
-    return NextResponse.json({ success: true, admin: { id: newAdmin._id, name, email: lowerEmail, role: newAdmin.role, permissions: finalPermissions, allowed_courses: finalCourses } });
+    return NextResponse.json({
+      success: true,
+      admin: {
+        id: newAdmin._id,
+        name,
+        email: lowerEmail,
+        raw_password: password,
+        role: newAdmin.role,
+        permissions: finalPermissions,
+        allowed_courses: finalCourses,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
