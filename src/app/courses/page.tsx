@@ -4,10 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { BookOpen, Plus, Trash2, AlertTriangle, X, Trophy, GraduationCap, ChevronDown, Edit2 } from 'lucide-react';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function CourseManagementPage() {
-  const [courses, setCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getAdminSwrCache<any[]>('admin_courses_cache');
+  const [courses, setCourses] = useState<any[]>(initialCache || []);
+  const [loading, setLoading] = useState(!initialCache);
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeCatalogTab, setActiveCatalogTab] = useState<'all' | 'competitive' | 'school'>('all');
 
@@ -101,11 +103,13 @@ export default function CourseManagementPage() {
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
 
   const fetchCourses = async () => {
-    setLoading(true);
     try {
-      const res = await fetch('/api/courses');
+      const res = await fetch('/api/courses', { cache: 'no-store' });
       const data = await res.json();
-      setCourses(data.courses || []);
+      if (data.courses) {
+        setCourses(data.courses);
+        setAdminSwrCache('admin_courses_cache', data.courses);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -572,7 +576,7 @@ export default function CourseManagementPage() {
 
                     {/* Custom Dropdown Menu with Red Trash Remove Buttons Next to EVERY Board */}
                     {isBoardDropdownOpen && (
-                      <div className="absolute left-0 right-0 mt-1 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden py-1 max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="absolute left-0 right-0 mt-1 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden py-1 max-h-64 overflow-y-auto animate-dropdown">
                         {allActiveBoards.map((bName) => {
                           const isSelected = board === bName;
                           return (

@@ -117,20 +117,54 @@ h6 {
 @keyframes pageSlideIn {
   0% {
     opacity: 0;
-    transform: translateX(18px) scale(0.995);
+    transform: translateY(6px) scale(0.998);
   }
 
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 .animate-page-in {
-  animation: pageSlideIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: pageSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: opacity, transform;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+}
+
+/* Dropdown & Popover Spring Entrance Animations */
+@keyframes dropdownSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dropdownScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-dropdown {
+  animation: dropdownSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top;
+  will-change: transform, opacity;
+}
+
+.animate-scale-in {
+  animation: dropdownScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 
 /* Rich Card Shadow Elevation across All Cards & Pages */

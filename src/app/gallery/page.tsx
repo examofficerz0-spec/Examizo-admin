@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 import { 
   Plus, 
   Search, 
@@ -50,8 +51,9 @@ const DEFAULT_PRESET_IMAGES = [
 ];
 
 export default function AdminGalleryPage() {
-  const [items, setItems] = useState<GalleryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getAdminSwrCache<GalleryItem[]>('admin_gallery_cache');
+  const [items, setItems] = useState<GalleryItem[]>(initialCache || []);
+  const [loading, setLoading] = useState(!initialCache);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   
@@ -74,11 +76,11 @@ export default function AdminGalleryPage() {
 
   const fetchGallery = async () => {
     try {
-      setLoading(true);
-      const res = await fetch('/api/gallery');
+      const res = await fetch('/api/gallery', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.gallery)) {
         setItems(data.gallery);
+        setAdminSwrCache('admin_gallery_cache', data.gallery);
       }
     } catch (e) {
       console.error('Failed to load gallery items:', e);

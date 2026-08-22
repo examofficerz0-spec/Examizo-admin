@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { CustomSelect } from '@/components/ui/CustomSelect';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 import {
   FolderDown,
   Plus,
@@ -41,15 +42,8 @@ interface ResourceItem {
   created_at?: string;
 }
 
-const getInitialResourcesCache = () => {
-  if (typeof window !== 'undefined' && (window as any).__RESOURCES_CACHE__) {
-    return (window as any).__RESOURCES_CACHE__;
-  }
-  return null;
-};
-
 export default function AdminResourcesPage() {
-  const initialCache = getInitialResourcesCache();
+  const initialCache = getAdminSwrCache<{ courses: CourseItem[]; resources: ResourceItem[] }>('admin_resources_cache');
   const [courses, setCourses] = useState<CourseItem[]>(initialCache?.courses || []);
   const [resources, setResources] = useState<ResourceItem[]>(initialCache?.resources || []);
   const [loading, setLoading] = useState(!initialCache);
@@ -110,17 +104,14 @@ export default function AdminResourcesPage() {
   }, []);
 
   const fetchData = async () => {
-    if (!initialCache) setLoading(true);
     try {
-      const res = await fetch('/api/resources');
+      const res = await fetch('/api/resources', { cache: 'no-store' });
       const data = await res.json();
       const newCache = {
         courses: data.courses || [],
         resources: data.resources || [],
       };
-      if (typeof window !== 'undefined') {
-        (window as any).__RESOURCES_CACHE__ = newCache;
-      }
+      setAdminSwrCache('admin_resources_cache', newCache);
 
       if (data.courses) setCourses(data.courses);
       if (data.resources) setResources(data.resources);

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 import { 
   ClipboardList, 
   Trash2, 
@@ -17,8 +18,9 @@ import {
 } from 'lucide-react';
 
 export default function AuditLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getAdminSwrCache<any[]>('admin_audit_logs_cache');
+  const [logs, setLogs] = useState<any[]>(initialCache || []);
+  const [loading, setLoading] = useState(!initialCache);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAction, setFilterAction] = useState('ALL');
   
@@ -29,10 +31,12 @@ export default function AuditLogsPage() {
 
   const fetchLogs = async () => {
     try {
-      setLoading(true);
-      const res = await fetch('/api/audit-logs');
+      const res = await fetch('/api/audit-logs', { cache: 'no-store' });
       const data = await res.json();
-      setLogs(data.logs || []);
+      if (data.logs) {
+        setLogs(data.logs);
+        setAdminSwrCache('admin_audit_logs_cache', data.logs);
+      }
     } catch (e) {
       console.error('Failed to fetch audit logs:', e);
     } finally {

@@ -21,11 +21,13 @@ import {
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function StudentPerformancePage() {
-  const [courses, setCourses] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCache = getAdminSwrCache<{ courses: any[]; users: any[] }>('admin_performance_cache');
+  const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
+  const [users, setUsers] = useState<any[]>(initialCache?.users || []);
+  const [loading, setLoading] = useState(!initialCache);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,21 +37,28 @@ export default function StudentPerformancePage() {
   }, []);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const [resCourses, resUsers] = await Promise.all([
-        fetch('/api/courses'),
-        fetch('/api/users'),
+        fetch('/api/courses', { cache: 'no-store' }),
+        fetch('/api/users', { cache: 'no-store' }),
       ]);
 
       const dataCourses = await resCourses.json();
       const dataUsers = await resUsers.json();
 
-      if (dataCourses.courses) setCourses(dataCourses.courses);
+      let activeUsers: any[] = [];
       if (dataUsers.users) {
-        const activeUsers = dataUsers.users.filter((u: any) => u.status !== 'Deleted');
+        activeUsers = dataUsers.users.filter((u: any) => u.status !== 'Deleted');
         setUsers(activeUsers);
       }
+      if (dataCourses.courses) {
+        setCourses(dataCourses.courses);
+      }
+
+      setAdminSwrCache('admin_performance_cache', {
+        courses: dataCourses.courses || [],
+        users: activeUsers,
+      });
     } catch (e) {
       console.error('Error fetching performance data:', e);
     } finally {

@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 import { Users, Search, UserPlus, ShieldCheck, Trash2, X, AlertTriangle, Shield, Edit3, BookOpen, Key, CheckSquare, Square, Eye, EyeOff, Bell, Send, CheckCircle2, Lock, ChevronDown, ChevronUp, Layers, BarChart2 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -18,9 +19,10 @@ export default function UserManagementPage() {
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students');
 
   // Student State
-  const [users, setUsers] = useState<any[]>([]);
+  const initialCache = getAdminSwrCache<{ users?: any[]; admins?: any[]; courses?: any[] }>('admin_users_cache');
+  const [users, setUsers] = useState<any[]>(initialCache?.users || []);
   const [selectedStatsStudentId, setSelectedStatsStudentId] = useState<string | null>(null);
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(!initialCache?.users);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -39,8 +41,8 @@ export default function UserManagementPage() {
   const [savingCourse, setSavingCourse] = useState(false);
 
   // Admin State & RBAC
-  const [admins, setAdmins] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<any[]>(initialCache?.admins || []);
+  const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
   const [loadingAdmins, setLoadingAdmins] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
@@ -267,16 +269,21 @@ export default function UserManagementPage() {
   };
 
   const fetchUsers = async () => {
-    setLoadingUsers(true);
     try {
       const params = new URLSearchParams();
       if (searchQuery) params.set('q', searchQuery);
       if (statusFilter) params.set('status', statusFilter);
       if (courseFilter) params.set('course', courseFilter);
 
-      const res = await fetch(`/api/users?${params.toString()}`);
+      const res = await fetch(`/api/users?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
-      setUsers(data.users || []);
+      if (data.users) {
+        setUsers(data.users);
+        if (!searchQuery && !statusFilter && !courseFilter) {
+          const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+          setAdminSwrCache('admin_users_cache', { ...cur, users: data.users });
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -285,16 +292,21 @@ export default function UserManagementPage() {
   };
 
   const fetchAdmins = async () => {
-    setLoadingAdmins(true);
     try {
       const [adminsRes, coursesRes] = await Promise.all([
-        fetch('/api/admins'),
-        fetch('/api/courses'),
+        fetch('/api/admins', { cache: 'no-store' }),
+        fetch('/api/courses', { cache: 'no-store' }),
       ]);
       const adminsData = await adminsRes.json();
       const coursesData = await coursesRes.json();
-      setAdmins(adminsData.admins || []);
-      setCourses(coursesData.courses || []);
+      if (adminsData.admins) setAdmins(adminsData.admins);
+      if (coursesData.courses) setCourses(coursesData.courses);
+      const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+      setAdminSwrCache('admin_users_cache', {
+        ...cur,
+        admins: adminsData.admins || [],
+        courses: coursesData.courses || []
+      });
     } catch (err) {
       console.error(err);
     } finally {
