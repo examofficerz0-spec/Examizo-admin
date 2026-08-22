@@ -83,104 +83,63 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
         </defs>
 
         <style>{`
-          @keyframes ezHatEntranceAdmin {
-            0% {
-              transform: translateY(-65px) translateX(15px) rotate(-26deg) scale(1.25);
-              -webkit-transform: translateY(-65px) translateX(15px) rotate(-26deg) scale(1.25);
-              opacity: 0;
-            }
-            60% {
-              transform: translateY(6px) translateX(-2px) rotate(4deg) scale(0.96);
-              -webkit-transform: translateY(6px) translateX(-2px) rotate(4deg) scale(0.96);
-              opacity: 1;
-            }
-            80% {
-              transform: translateY(-3px) translateX(1px) rotate(-2deg) scale(1.02);
-              -webkit-transform: translateY(-3px) translateX(1px) rotate(-2deg) scale(1.02);
-            }
-            100% {
-              transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
-              -webkit-transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
-              opacity: 1;
-            }
-          }
-
-          /* Continuous Infinite Hover & Floating Tilt Animation for the Graduation Hat in Admin */
+          /* Fluid Floating Tilt Animation for the Graduation Hat */
           @keyframes ezHatInfiniteFloatAdmin {
             0%, 100% {
-              transform: translateY(0px) rotate(0deg);
-              -webkit-transform: translateY(0px) rotate(0deg);
+              transform: translate3d(0, 0px, 0) rotate(0deg);
+              -webkit-transform: translate3d(0, 0px, 0) rotate(0deg);
             }
             25% {
-              transform: translateY(-4.5px) rotate(-3deg);
-              -webkit-transform: translateY(-4.5px) rotate(-3deg);
+              transform: translate3d(0, -3.5px, 0) rotate(-2.5deg);
+              -webkit-transform: translate3d(0, -3.5px, 0) rotate(-2.5deg);
             }
             50% {
-              transform: translateY(-1px) rotate(1.8deg);
-              -webkit-transform: translateY(-1px) rotate(1.8deg);
+              transform: translate3d(0, -0.8px, 0) rotate(1.2deg);
+              -webkit-transform: translate3d(0, -0.8px, 0) rotate(1.2deg);
             }
             75% {
-              transform: translateY(-3.5px) rotate(-1.5deg);
-              -webkit-transform: translateY(-3.5px) rotate(-1.5deg);
+              transform: translate3d(0, -2.8px, 0) rotate(-1.2deg);
+              -webkit-transform: translate3d(0, -2.8px, 0) rotate(-1.2deg);
             }
           }
 
-          /* Continuous Infinite Swaying Loop for the Tassel in Admin Portal */
+          /* Fluid Continuous Swaying Loop for the Tassel */
           @keyframes ezTasselContinuousLoopAdmin {
             0%, 100% {
               transform: rotate(0deg);
               -webkit-transform: rotate(0deg);
             }
             25% {
-              transform: rotate(-26deg);
-              -webkit-transform: rotate(-26deg);
+              transform: rotate(-18deg);
+              -webkit-transform: rotate(-18deg);
             }
             50% {
-              transform: rotate(20deg);
-              -webkit-transform: rotate(20deg);
+              transform: rotate(14deg);
+              -webkit-transform: rotate(14deg);
             }
             75% {
-              transform: rotate(-14deg);
-              -webkit-transform: rotate(-14deg);
+              transform: rotate(-10deg);
+              -webkit-transform: rotate(-10deg);
             }
           }
 
-          /* Continuous Secondary Wave for the Tassel Brush Tip */
+          /* Fluid Secondary Wave for the Tassel Brush Tip */
           @keyframes ezTasselBrushContinuousAdmin {
             0%, 100% {
               transform: rotate(0deg) skewX(0deg);
               -webkit-transform: rotate(0deg) skewX(0deg);
             }
             25% {
-              transform: rotate(-16deg) skewX(-10deg);
-              -webkit-transform: rotate(-16deg) skewX(-10deg);
+              transform: rotate(-12deg) skewX(-6deg);
+              -webkit-transform: rotate(-12deg) skewX(-6deg);
             }
             50% {
-              transform: rotate(14deg) skewX(8deg);
-              -webkit-transform: rotate(14deg) skewX(8deg);
+              transform: rotate(10deg) skewX(5deg);
+              -webkit-transform: rotate(10deg) skewX(5deg);
             }
             75% {
-              transform: rotate(-8deg) skewX(-4deg);
-              -webkit-transform: rotate(-8deg) skewX(-4deg);
-            }
-          }
-
-          @keyframes ezELandBounceAdmin {
-            0%, 55% {
-              transform: translateY(0) scaleY(1);
-              -webkit-transform: translateY(0) scaleY(1);
-            }
-            65% {
-              transform: translateY(3px) scaleY(0.97);
-              -webkit-transform: translateY(3px) scaleY(0.97);
-            }
-            80% {
-              transform: translateY(-1px) scaleY(1.01);
-              -webkit-transform: translateY(-1px) scaleY(1.01);
-            }
-            100% {
-              transform: translateY(0) scaleY(1);
-              -webkit-transform: translateY(0) scaleY(1);
+              transform: rotate(-6deg) skewX(-3deg);
+              -webkit-transform: rotate(-6deg) skewX(-3deg);
             }
           }
 
@@ -190,8 +149,8 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             will-change: transform;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            animation: ezHatEntranceAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 3.2s ease-in-out 1.1s infinite;
-            -webkit-animation: ezHatEntranceAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 3.2s ease-in-out 1.1s infinite;
+            animation: ezHatInfiniteFloatAdmin 3.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            -webkit-animation: ezHatInfiniteFloatAdmin 3.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
 
           .ez-tassel-loop-admin {
@@ -200,8 +159,8 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             will-change: transform;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            animation: ezTasselContinuousLoopAdmin 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-            -webkit-animation: ezTasselContinuousLoopAdmin 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            animation: ezTasselContinuousLoopAdmin 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            -webkit-animation: ezTasselContinuousLoopAdmin 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
 
           .ez-tassel-brush-loop-admin {
@@ -210,8 +169,8 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             will-change: transform;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            animation: ezTasselBrushContinuousAdmin 2.4s ease-in-out infinite;
-            -webkit-animation: ezTasselBrushContinuousAdmin 2.4s ease-in-out infinite;
+            animation: ezTasselBrushContinuousAdmin 2.8s ease-in-out infinite;
+            -webkit-animation: ezTasselBrushContinuousAdmin 2.8s ease-in-out infinite;
           }
 
           .ez-e-admin {
@@ -220,29 +179,20 @@ export const ExamizoIcon: React.FC<ExamizoIconProps> = ({
             will-change: transform;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            animation: ezELandBounceAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-            -webkit-animation: ezELandBounceAdmin 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
           }
 
           .group\\/icon:hover .ez-hat-admin,
           .group:hover .ez-hat-admin,
           .examizo-container:hover .ez-hat-admin {
-            animation: ezHatEntranceAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 2.6s ease-in-out 0.85s infinite;
-            -webkit-animation: ezHatEntranceAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards, ezHatInfiniteFloatAdmin 2.6s ease-in-out 0.85s infinite;
+            animation: ezHatInfiniteFloatAdmin 2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            -webkit-animation: ezHatInfiniteFloatAdmin 2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
 
           .group\\/icon:hover .ez-tassel-loop-admin,
           .group:hover .ez-tassel-loop-admin,
           .examizo-container:hover .ez-tassel-loop-admin {
-            animation: ezTasselContinuousLoopAdmin 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-            -webkit-animation: ezTasselContinuousLoopAdmin 1.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-          }
-
-          .group\\/icon:hover .ez-e-admin,
-          .group:hover .ez-e-admin,
-          .examizo-container:hover .ez-e-admin {
-            animation: ezELandBounceAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-            -webkit-animation: ezELandBounceAdmin 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            animation: ezTasselContinuousLoopAdmin 1.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+            -webkit-animation: ezTasselContinuousLoopAdmin 1.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
           }
         `}</style>
 
