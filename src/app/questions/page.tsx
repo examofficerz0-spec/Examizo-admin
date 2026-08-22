@@ -667,48 +667,123 @@ export default function QuestionManagementPage() {
 
         if (sheetObjRows.length === 0) continue;
 
-        // Key finder helper for this sheet
-        const findKey = (patterns: string[], exclude?: RegExp): string | null => {
-          for (const key of colKeys) {
-            const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (exclude && exclude.test(norm)) continue;
-            for (const p of patterns) {
-              const pNorm = p.toLowerCase().replace(/[^a-z0-9]/g, '');
-              if (norm === pNorm || norm.includes(pNorm)) return key;
+        // ─── Precision Column-by-Column Resolution Engine ───
+        const normCols = colKeys.map((k) => ({
+          original: k,
+          norm: k.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        }));
+
+        const usedCols = new Set<string>();
+
+        const matchCol = (
+          exactPatterns: string[],
+          prefixPatterns: string[] = [],
+          excludeRegex?: RegExp
+        ): string | null => {
+          // 1. Exact Match Priority
+          for (const item of normCols) {
+            if (usedCols.has(item.original)) continue;
+            if (excludeRegex && excludeRegex.test(item.norm)) continue;
+            for (const p of exactPatterns) {
+              if (item.norm === p) return item.original;
+            }
+          }
+          // 2. Strict Prefix Match (must be 3+ characters to avoid single letter collisions)
+          for (const item of normCols) {
+            if (usedCols.has(item.original)) continue;
+            if (excludeRegex && excludeRegex.test(item.norm)) continue;
+            for (const p of prefixPatterns) {
+              if (p.length >= 3 && (item.norm.startsWith(p) || item.norm === p)) return item.original;
             }
           }
           return null;
         };
 
-        const subjKey = findKey(['subject', 'subj', 'category', 'stream', 'course']);
-        const topicKey = findKey(['topic', 'chapter', 'module', 'unit', 'section', 'lesson']);
-
-        let qKey = findKey(
-          ['questiontext', 'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext', 'questiondescription', 'questiontitle'],
-          /^(questionno|questionnumber|questiontype|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id)$/i
+        // 1. Subject Column
+        const subjKey = matchCol(
+          ['subject', 'subjectname', 'course', 'stream', 'discipline'],
+          ['subject']
         );
+        if (subjKey) usedCols.add(subjKey);
 
-        const optAKey = findKey(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a']) ||
-          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'a') || null;
-        const optBKey = findKey(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b']) ||
-          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'b') || null;
-        const optCKey = findKey(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c']) ||
-          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'c') || null;
-        const optDKey = findKey(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd']) ||
-          colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'd') || null;
-        const ansKey = findKey(['answer', 'correct', 'ans', 'key', 'correctoption', 'correctanswer', 'rightanswer', 'anskey', 'solutionkey']);
-        const expKey = findKey(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint']);
-        const detExpKey = findKey(['detailedexplanation', 'detailed', 'stepbystep', 'workedout', 'detailedsol']);
-        const marksKey = findKey(['marks', 'points', 'score', 'weight']);
-        const imgKey = findKey(['imageurl', 'image', 'questionimage', 'diagram', 'img', 'photo', 'picture', 'fig', 'figure', 'image_url', 'diagramurl']);
+        // 2. Topic / Chapter Column
+        const topicKey = matchCol(
+          ['topic', 'topicname', 'chapter', 'chaptername', 'module', 'unit', 'section', 'lesson', 'subtopic'],
+          ['topic', 'chapter', 'module', 'unit']
+        );
+        if (topicKey) usedCols.add(topicKey);
+
+        // 3. Question Prompt Column
+        const qKey = matchCol(
+          ['question', 'questiontext', 'questions', 'prompt', 'problem', 'statement', 'questionstatement', 'questiondescription', 'questiontitle', 'mcq', 'qtext', 'ques', 'q_text'],
+          ['questiontext', 'question', 'problem', 'statement'],
+          /^(questionno|questionnumber|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id|_id)$/i
+        );
+        if (qKey) usedCols.add(qKey);
+
+        // 4. Option A Column (Strict Exact Patterns only — NEVER allow loose substring match)
+        const optAKey = matchCol(
+          ['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a', 'answera'],
+          ['optiona', 'opta', 'choicea', 'option1']
+        );
+        if (optAKey) usedCols.add(optAKey);
+
+        // 5. Option B Column (Strict Exact Patterns only)
+        const optBKey = matchCol(
+          ['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b', 'answerb'],
+          ['optionb', 'optb', 'choiceb', 'option2']
+        );
+        if (optBKey) usedCols.add(optBKey);
+
+        // 6. Option C Column (Strict Exact Patterns only)
+        const optCKey = matchCol(
+          ['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c', 'answerc'],
+          ['optionc', 'optc', 'choicec', 'option3']
+        );
+        if (optCKey) usedCols.add(optCKey);
+
+        // 7. Option D Column (Strict Exact Patterns only)
+        const optDKey = matchCol(
+          ['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd', 'answerd'],
+          ['optiond', 'optd', 'choiced', 'option4']
+        );
+        if (optDKey) usedCols.add(optDKey);
+
+        // 8. Correct Answer Column
+        const ansKey = matchCol(
+          ['answer', 'correctanswer', 'correctoption', 'correctopt', 'correct', 'ans', 'key', 'anskey', 'answerkey', 'rightanswer', 'solutionkey', 'correctchoice'],
+          ['correctanswer', 'correctoption', 'answer', 'anskey']
+        );
+        if (ansKey) usedCols.add(ansKey);
+
+        // 9. Detailed Explanation Column (Step by step)
+        const detExpKey = matchCol(
+          ['detailedexplanation', 'detailedsolution', 'stepbystep', 'workedout', 'workedsolution', 'detailedsol', 'detailed'],
+          ['detailedexplanation', 'detailedsolution', 'stepbystep']
+        );
+        if (detExpKey) usedCols.add(detExpKey);
+
+        // 10. General Explanation Column
+        const expKey = matchCol(
+          ['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint', 'description'],
+          ['explanation', 'solution', 'reason', 'rationale']
+        );
+        if (expKey) usedCols.add(expKey);
+
+        // 11. Image / Diagram Column
+        const imgKey = matchCol(
+          ['imageurl', 'image', 'diagramurl', 'diagram', 'questionimage', 'photo', 'picture', 'fig', 'figure', 'img'],
+          ['imageurl', 'diagramurl', 'image', 'diagram']
+        );
+        if (imgKey) usedCols.add(imgKey);
 
         // Auto-detect question key if not found by name
-        if (!qKey) {
-          const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey, imgKey].filter(Boolean));
+        let finalQKey = qKey;
+        if (!finalQKey) {
           let bestKey: string | null = null;
           let bestScore = 0;
           for (const key of colKeys) {
-            if (usedKeys.has(key)) continue;
+            if (usedCols.has(key)) continue;
             const samples = sheetObjRows.slice(0, 30).map((r) => (r[key] !== undefined && r[key] !== null ? String(r[key]).trim() : '')).filter(Boolean);
             const diversity = new Set(samples).size;
             const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
@@ -718,19 +793,18 @@ export default function QuestionManagementPage() {
               bestKey = key;
             }
           }
-          if (bestKey) qKey = bestKey;
+          if (bestKey) finalQKey = bestKey;
         }
 
         let sheetParsedCount = 0;
 
         for (const row of sheetObjRows) {
-          let qText = qKey && row[qKey] !== undefined && row[qKey] !== null ? String(row[qKey]).trim() : '';
+          let qText = finalQKey && row[finalQKey] !== undefined && row[finalQKey] !== null ? String(row[finalQKey]).trim() : '';
 
           if (!qText) {
-            const usedKeys = new Set([subjKey, topicKey, optAKey, optBKey, optCKey, optDKey, ansKey, expKey, detExpKey, marksKey, imgKey].filter(Boolean));
             let bestVal = '';
             for (const key of colKeys) {
-              if (usedKeys.has(key)) continue;
+              if (usedCols.has(key)) continue;
               const val = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
               if (val.length > bestVal.length) bestVal = val;
             }
@@ -770,9 +844,12 @@ export default function QuestionManagementPage() {
             }
           }
 
-          const exp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
-          const detExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
+          const rawExp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
+          const rawDetExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
           const qImgUrl = imgKey && row[imgKey] !== undefined && row[imgKey] !== null ? String(row[imgKey]).trim() : '';
+
+          const exp = rawExp || rawDetExp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`;
+          const detExp = rawDetExp || rawExp || '';
 
           // Fallback to sheet name if no subject column exists
           const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
@@ -801,8 +878,8 @@ export default function QuestionManagementPage() {
             image_url: qImgUrl,
             options: cleanOpts,
             correct_option: correctIndex,
-            explanation: exp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`,
-            detailed_explanation: detExp || '',
+            explanation: exp,
+            detailed_explanation: detExp,
           });
           sheetParsedCount++;
         }
