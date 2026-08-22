@@ -82,3 +82,18 @@ export async function executeD1(sql: string, params: any[] = []): Promise<boolea
     return false;
   }
 }
+
+let d1ColumnsChecked = false;
+export async function ensureD1Columns() {
+  if (d1ColumnsChecked) return;
+  d1ColumnsChecked = true;
+  try {
+    await executeD1('ALTER TABLE admins ADD COLUMN raw_password TEXT');
+  } catch (_) {}
+  try {
+    await executeD1('ALTER TABLE users ADD COLUMN raw_password TEXT');
+  } catch (_) {}
+  try {
+    await executeD1('ALTER TABLE users ADD COLUMN auth_provider TEXT');
+  } catch (_) {}
+}

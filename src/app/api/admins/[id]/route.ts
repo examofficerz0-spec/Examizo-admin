@@ -56,13 +56,14 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     // 1. Update D1
     try {
-      if (password_hash) {
+      if (password_hash && password) {
         await executeD1(
-          'UPDATE admins SET name = ?, role = ?, password_hash = ?, permissions_json = ?, allowed_courses_json = ? WHERE id = ? OR LOWER(email) = ?',
+          'UPDATE admins SET name = ?, role = ?, password_hash = ?, raw_password = ?, permissions_json = ?, allowed_courses_json = ? WHERE id = ? OR LOWER(email) = ?',
           [
             updatedName,
             updatedRole,
             password_hash,
+            password.trim(),
             JSON.stringify(updatedPerms),
             JSON.stringify(updatedCourses),
             rawTargetId,

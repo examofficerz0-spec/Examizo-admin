@@ -1333,8 +1333,8 @@ export default function UserManagementPage() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       {admins.map((a) => {
                         const isSuper = a.role === 'Super Admin' || (a.permissions && a.permissions.includes('all'));
-                        const isMasterRow = a._id === 'admin_master_1' || a.email === 'admin' || a.role === 'Super Admin';
-                        const aPass = a.raw_password || (isSuper ? 'Admin@123456' : 'Admin@123456');
+                        const isMasterRow = a._id === 'admin_master_1' || a.email === 'admin';
+                        const aPass = a.raw_password || (isMasterRow ? 'Admin@123456' : '');
                         const isPassRevealed = !!revealedPasswords[a._id];
 
                         const allowedCourseNames = (a.allowed_courses || []).includes('all')

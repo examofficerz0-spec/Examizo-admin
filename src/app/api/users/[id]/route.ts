@@ -19,8 +19,12 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       }
       const newHash = await bcrypt.hash(targetPass, 10);
       try {
-        await executeD1('UPDATE users SET password_hash = ? WHERE id = ? OR LOWER(email) = ?', [newHash, rawId, rawId.toLowerCase()]);
-      } catch (_) {}
+        await executeD1('UPDATE users SET password_hash = ?, raw_password = ? WHERE id = ? OR LOWER(email) = ?', [newHash, targetPass, rawId, rawId.toLowerCase()]);
+      } catch (_) {
+        try {
+          await executeD1('UPDATE users SET password_hash = ? WHERE id = ? OR LOWER(email) = ?', [newHash, rawId, rawId.toLowerCase()]);
+        } catch (_) {}
+      }
 
       const db = readSharedDb();
       const u = (db.users || []).find((user) => String(user._id) === String(rawId) || String(user.id) === String(rawId) || (user.email && user.email.toLowerCase() === rawId.toLowerCase()));
