@@ -45,13 +45,19 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.status === 401 || res.status === 403) {
+          router.push('/login');
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
-        if (!data.authenticated) {
+        if (data && data.authenticated === false) {
           router.push('/login');
         }
       })
-      .catch(() => router.push('/login'));
+      .catch((err) => console.warn('[AdminDashboard] Auth check error:', err));
   }, [router]);
 
   const fetchDashboardData = () => {
