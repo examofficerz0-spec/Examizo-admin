@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
+import { executeD1 } from '@/lib/d1';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,13 @@ export async function POST(req: Request) {
       created_at: new Date().toISOString(),
     };
 
+    try {
+      await executeD1(
+        'INSERT INTO admins (id, name, email, password_hash, role, permissions_json, allowed_courses_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [newAdmin._id, name, lowerEmail, password_hash, newAdmin.role, JSON.stringify(finalPermissions), JSON.stringify(finalCourses), newAdmin.created_at]
+      );
+    } catch (_) {}
+
     if (!db.admins) db.admins = [];
     db.admins.unshift(newAdmin);
 
@@ -79,8 +87,10 @@ export async function POST(req: Request) {
     writeSharedDb(db);
     return NextResponse.json({
       success: true,
+      message: `Admin account for ${name} assigned successfully`,
       admin: {
         id: newAdmin._id,
+        _id: newAdmin._id,
         name,
         email: lowerEmail,
         raw_password: password,

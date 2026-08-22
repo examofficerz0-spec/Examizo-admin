@@ -656,6 +656,25 @@ export default function UserManagementPage() {
           setShowAddAdminModal(false);
           setNotifToast(`New admin ${adminName} assigned successfully!`);
           setTimeout(() => setNotifToast(null), 3500);
+          if (data.admin) {
+            const addedAdmin = {
+              _id: data.admin.id || data.admin._id,
+              id: data.admin.id || data.admin._id,
+              name: data.admin.name,
+              email: data.admin.email,
+              role: data.admin.role,
+              raw_password: data.admin.raw_password,
+              permissions: data.admin.permissions,
+              allowed_courses: data.admin.allowed_courses,
+              created_at: new Date().toISOString(),
+            };
+            setAdmins((prev) => [addedAdmin, ...prev.filter((a) => a._id !== addedAdmin._id && a.email !== addedAdmin.email)]);
+            const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+            setAdminSwrCache('admin_users_cache', {
+              ...cur,
+              admins: [addedAdmin, ...(cur.admins || []).filter((a: any) => a._id !== addedAdmin._id && a.email !== addedAdmin.email)],
+            });
+          }
           fetchAdmins();
           broadcastAdminChange('users');
         }
@@ -720,7 +739,7 @@ export default function UserManagementPage() {
 
     try {
       if (targetType === 'admin') {
-        const res = await fetch(`/api/admins/${targetId}`, { method: 'DELETE' });
+        const res = await fetch(`/api/admins/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
         const data = await res.json();
         setActiveActionModal(null);
         if (!res.ok) {
@@ -728,6 +747,10 @@ export default function UserManagementPage() {
         } else {
           setNotifToast(data.message || 'Admin account removed successfully!');
           setTimeout(() => setNotifToast(null), 3500);
+          setAdmins((prev) => prev.filter((a) => String(a._id) !== String(targetId) && String(a.id) !== String(targetId) && a.email !== entity.email));
+          const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+          const nextAdmins = (cur.admins || []).filter((a: any) => String(a._id) !== String(targetId) && String(a.id) !== String(targetId) && a.email !== entity.email);
+          setAdminSwrCache('admin_users_cache', { ...cur, admins: nextAdmins });
         }
         fetchAdmins();
         broadcastAdminChange('users');
