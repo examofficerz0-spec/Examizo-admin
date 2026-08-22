@@ -62,12 +62,20 @@ export async function GET(req: Request) {
             }
           }
 
+          const isGoogle = Boolean(
+            u.auth_provider === 'google' ||
+            u.auth_type === 'google' ||
+            (typeof u.password_hash === 'string' && (u.password_hash.includes('google_oauth_') || u.password_hash.includes('google'))) ||
+            (!u.raw_password && !u.password && typeof u.email === 'string' && (u.email.includes('@gmail.com') || u.email.includes('@googlemail.com')))
+          );
+
           return {
             _id: u.id,
             id: u.id,
             name: u.name,
             email: u.email,
-            raw_password: isMaster ? (u.raw_password || '123456') : undefined,
+            auth_provider: isGoogle ? 'google' : (u.auth_provider || 'email'),
+            raw_password: isMaster && !isGoogle ? (u.raw_password || null) : null,
             status: u.status || 'Active',
             xp_total: u.xp_total || 0,
             created_at: u.created_at || new Date().toISOString(),
@@ -124,12 +132,20 @@ export async function GET(req: Request) {
         }
       }
 
+      const isGoogle = Boolean(
+        u.auth_provider === 'google' ||
+        u.auth_type === 'google' ||
+        (typeof u.password_hash === 'string' && (u.password_hash.includes('google_oauth_') || u.password_hash.includes('google'))) ||
+        (!u.raw_password && !u.password && typeof u.email === 'string' && (u.email.includes('@gmail.com') || u.email.includes('@googlemail.com')))
+      );
+
       return {
         _id: u._id || u.id,
         id: u._id || u.id,
         name: u.name,
         email: u.email,
-        raw_password: isMaster ? (u.raw_password || '123456') : undefined,
+        auth_provider: isGoogle ? 'google' : (u.auth_provider || 'email'),
+        raw_password: isMaster && !isGoogle ? (u.raw_password || null) : null,
         status: u.status || 'Active',
         xp_total: u.xp_total || 0,
         created_at: u.created_at || new Date().toISOString(),
@@ -180,6 +196,7 @@ export async function POST(req: Request) {
             email: lowerEmail,
             password_hash,
             raw_password: password,
+            auth_provider: 'email',
             status: 'Active',
             xp_total: 0,
             locked_course_id: locked_course_id || null,
@@ -196,6 +213,7 @@ export async function POST(req: Request) {
             name,
             email: lowerEmail,
             raw_password: password,
+            auth_provider: 'email',
             status: 'Active',
             xp_total: 0,
             locked_course_id: locked_course_id || null,
@@ -221,6 +239,7 @@ export async function POST(req: Request) {
       email: lowerEmail,
       password_hash,
       raw_password: password,
+      auth_provider: 'email',
       status: 'Active',
       xp_total: 0,
       locked_course_id: locked_course_id || null,
