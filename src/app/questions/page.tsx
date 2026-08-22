@@ -586,6 +586,7 @@ export default function QuestionManagementPage() {
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
         setExcelError('The selected spreadsheet has no readable sheets.');
         setParsedExcelQuestions([]);
+        setExcelTotalParsed(0);
         return;
       }
 
@@ -601,31 +602,6 @@ export default function QuestionManagementPage() {
       for (const sheetName of workbook.SheetNames) {
         const worksheet = workbook.Sheets[sheetName];
         if (!worksheet) continue;
-
-        // Force-expand worksheet !ref to cover ALL actual cells
-        // Some Excel generators set a limited print area / used range that truncates data
-        if (worksheet['!ref']) {
-          const range = XLSX.utils.decode_range(worksheet['!ref']);
-          for (const cellAddr in worksheet) {
-            if (cellAddr[0] === '!') continue;
-            const cell = XLSX.utils.decode_cell(cellAddr);
-            if (cell.r > range.e.r) range.e.r = cell.r;
-            if (cell.c > range.e.c) range.e.c = cell.c;
-          }
-          worksheet['!ref'] = XLSX.utils.encode_range(range);
-        } else {
-          // No !ref at all — build one from all cells
-          let maxR = 0, maxC = 0;
-          for (const cellAddr in worksheet) {
-            if (cellAddr[0] === '!') continue;
-            const cell = XLSX.utils.decode_cell(cellAddr);
-            if (cell.r > maxR) maxR = cell.r;
-            if (cell.c > maxC) maxC = cell.c;
-          }
-          if (maxR > 0 || maxC > 0) {
-            worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
-          }
-        }
 
         // Extract 2D rows (header: 1)
         const rawGrid: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
@@ -707,26 +683,21 @@ export default function QuestionManagementPage() {
         const subjKey = findKey(['subject', 'subj', 'category', 'stream', 'course']);
         const topicKey = findKey(['topic', 'chapter', 'module', 'unit', 'section', 'lesson']);
 
-        let qKey = findKey(['questiontext', 'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext'],
-          /^(questionno|questionnumber|questiontype|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight)$/i);
+        let qKey = findKey(
+          ['questiontext', 'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext', 'questiondescription', 'questiontitle'],
+          /^(questionno|questionnumber|questiontype|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id)$/i
+        );
 
-        if (qKey) {
-          const norm = qKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (norm.includes('no') || norm.includes('num') || norm.includes('id') || norm.includes('type') || norm.includes('serial') || norm.includes('sr')) {
-            qKey = null;
-          }
-        }
-
-        const optAKey = findKey(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1']) ||
+        const optAKey = findKey(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a']) ||
           colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'a') || null;
-        const optBKey = findKey(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2']) ||
+        const optBKey = findKey(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b']) ||
           colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'b') || null;
-        const optCKey = findKey(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3']) ||
+        const optCKey = findKey(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c']) ||
           colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'c') || null;
-        const optDKey = findKey(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4']) ||
+        const optDKey = findKey(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd']) ||
           colKeys.find((k) => k.trim().toLowerCase().replace(/[^a-z0-9]/g, '') === 'd') || null;
-        const ansKey = findKey(['answer', 'correct', 'ans', 'key', 'correctoption', 'correctanswer', 'rightanswer', 'anskey']);
-        const expKey = findKey(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl']);
+        const ansKey = findKey(['answer', 'correct', 'ans', 'key', 'correctoption', 'correctanswer', 'rightanswer', 'anskey', 'solutionkey']);
+        const expKey = findKey(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint']);
         const detExpKey = findKey(['detailedexplanation', 'detailed', 'stepbystep', 'workedout', 'detailedsol']);
         const marksKey = findKey(['marks', 'points', 'score', 'weight']);
         const imgKey = findKey(['imageurl', 'image', 'questionimage', 'diagram', 'img', 'photo', 'picture', 'fig', 'figure', 'image_url', 'diagramurl']);
@@ -927,8 +898,10 @@ export default function QuestionManagementPage() {
         setExcelError('No valid questions could be extracted from the file. Please check column headers (Question, Option A, Option B, Option C, Option D, Answer).');
       }
     } catch (err: any) {
+      console.error('[ExcelParseError]', err);
       setExcelError(err.message || 'Failed to parse Excel/CSV file');
       setParsedExcelQuestions([]);
+      setExcelTotalParsed(0);
     } finally {
       setExcelParsing(false);
     }
@@ -2040,7 +2013,7 @@ export default function QuestionManagementPage() {
                     </div>
                   )}
 
-                  {!parsedExcelQuestions.length ? (
+                  {excelTotalParsed === 0 ? (
                     <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-8 text-center flex flex-col items-center justify-center space-y-3 bg-slate-50/50 dark:bg-slate-800/20 flex-1">
                       {excelParsing ? (
                         <div className="flex flex-col items-center space-y-2 py-6">
