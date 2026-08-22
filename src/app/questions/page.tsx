@@ -29,12 +29,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 
-const getInitialQuestionsCache = () => {
-  if (typeof window !== 'undefined' && (window as any).__ADMIN_QUESTIONS_CACHE__) {
-    return (window as any).__ADMIN_QUESTIONS_CACHE__;
-  }
-  return null;
-};
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 
 const cleanQuestionText = (text: any): string => {
   if (!text || typeof text !== 'string') return '';
@@ -57,7 +52,7 @@ const cleanQuestionText = (text: any): string => {
 };
 
 export default function QuestionManagementPage() {
-  const initialCache = getInitialQuestionsCache();
+  const initialCache = getAdminSwrCache<{ courses: any[]; questions: any[] }>('questions_cache');
   const router = useRouter();
   const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
   const [questions, setQuestions] = useState<any[]>(initialCache?.questions || []);
@@ -166,7 +161,10 @@ export default function QuestionManagementPage() {
         console.error(e);
       }
 
-      const [cRes, qRes] = await Promise.all([fetch('/api/courses'), fetch('/api/questions')]);
+      const [cRes, qRes] = await Promise.all([
+        fetch('/api/courses', { cache: 'no-store' }),
+        fetch('/api/questions', { cache: 'no-store' })
+      ]);
       const cData = await cRes.json();
       const qData = await qRes.json();
 
@@ -179,9 +177,7 @@ export default function QuestionManagementPage() {
         courses: loadedCourses,
         questions: qData.questions || [],
       };
-      if (typeof window !== 'undefined') {
-        (window as any).__ADMIN_QUESTIONS_CACHE__ = newCache;
-      }
+      setAdminSwrCache('questions_cache', newCache);
 
       setCourses(loadedCourses);
       if (loadedCourses.length > 0) {

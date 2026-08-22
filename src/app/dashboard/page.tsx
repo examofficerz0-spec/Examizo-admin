@@ -20,17 +20,11 @@ import {
   FileCheck,
   ClipboardList,
 } from 'lucide-react';
-
-const getInitialDashboardCache = () => {
-  if (typeof window !== 'undefined' && (window as any).__ADMIN_DASHBOARD_CACHE__) {
-    return (window as any).__ADMIN_DASHBOARD_CACHE__;
-  }
-  return null;
-};
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const initialCache = getInitialDashboardCache();
+  const initialCache = getAdminSwrCache<any>('admin_dashboard_cache');
   const [metrics, setMetrics] = useState(initialCache?.metrics || {
     totalStudents: 0,
     totalQuestions: 0,
@@ -62,7 +56,7 @@ export default function AdminDashboardPage() {
 
   const fetchDashboardData = () => {
     if (!initialCache) setLoading(true);
-    fetch('/api/dashboard')
+    fetch('/api/dashboard', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.metrics || data.hourlyData || data.auditLogs) {
@@ -71,9 +65,7 @@ export default function AdminDashboardPage() {
             hourlyData: data.hourlyData,
             auditLogs: data.auditLogs,
           };
-          if (typeof window !== 'undefined') {
-            (window as any).__ADMIN_DASHBOARD_CACHE__ = cacheObj;
-          }
+          setAdminSwrCache('admin_dashboard_cache', cacheObj);
         }
         if (data.metrics) {
           setMetrics(data.metrics);

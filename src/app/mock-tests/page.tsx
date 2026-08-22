@@ -7,15 +7,17 @@ import {
   FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
   BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3
 } from 'lucide-react';
+import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 
 export default function MockTestManagementPage() {
+  const initialCache = getAdminSwrCache<any>('admin_mock_tests_cache');
   const [activeTab, setActiveTab] = useState<'mock_tests' | 'presets' | 'weekly_dpp'>('mock_tests');
-  const [tests, setTests] = useState<any[]>([]);
-  const [presets, setPresets] = useState<any[]>([]);
-  const [weeklyDpps, setWeeklyDpps] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tests, setTests] = useState<any[]>(initialCache?.tests || []);
+  const [presets, setPresets] = useState<any[]>(initialCache?.presets || []);
+  const [weeklyDpps, setWeeklyDpps] = useState<any[]>(initialCache?.weeklyDpps || []);
+  const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
+  const [questions, setQuestions] = useState<any[]>(initialCache?.questions || []);
+  const [loading, setLoading] = useState(!initialCache);
 
   // Mock Test Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -62,14 +64,16 @@ export default function MockTestManagementPage() {
   const [dppSearchQuery, setDppSearchQuery] = useState<string>('');
 
   const fetchData = async () => {
-    setLoading(true);
+    if (!initialCache) {
+      setLoading(true);
+    }
     try {
       const [tRes, cRes, qRes, dppRes, pRes] = await Promise.all([
-        fetch('/api/mock-tests'),
-        fetch('/api/courses'),
-        fetch('/api/questions'),
-        fetch('/api/weekly-dpp'),
-        fetch('/api/presets'),
+        fetch('/api/mock-tests', { cache: 'no-store' }),
+        fetch('/api/courses', { cache: 'no-store' }),
+        fetch('/api/questions', { cache: 'no-store' }),
+        fetch('/api/weekly-dpp', { cache: 'no-store' }),
+        fetch('/api/presets', { cache: 'no-store' }),
       ]);
       const tData = await tRes.json();
       const cData = await cRes.json();
@@ -77,11 +81,25 @@ export default function MockTestManagementPage() {
       const dppData = await dppRes.json();
       const pData = await pRes.json();
 
-      setTests(tData.tests || []);
-      setCourses(cData.courses || []);
-      setQuestions(qData.questions || []);
-      setWeeklyDpps(dppData.weeklyDpps || []);
-      setPresets(pData.presets || []);
+      const newTests = tData.tests || [];
+      const newCourses = cData.courses || [];
+      const newQuestions = qData.questions || [];
+      const newDpps = dppData.weeklyDpps || [];
+      const newPresets = pData.presets || [];
+
+      setTests(newTests);
+      setCourses(newCourses);
+      setQuestions(newQuestions);
+      setWeeklyDpps(newDpps);
+      setPresets(newPresets);
+
+      setAdminSwrCache('admin_mock_tests_cache', {
+        tests: newTests,
+        courses: newCourses,
+        questions: newQuestions,
+        weeklyDpps: newDpps,
+        presets: newPresets,
+      });
 
       if (cData.courses?.length > 0) {
         setCourseId(cData.courses[0]._id);
