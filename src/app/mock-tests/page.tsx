@@ -674,7 +674,7 @@ export default function MockTestManagementPage() {
 
           {/* TAB 1: MOCK EXAMINATIONS */}
           {activeTab === 'mock_tests' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300 ease-out">
+            <div className="space-y-6 animate-in fade-in duration-150">
               <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">Active Mock Examinations</h2>
@@ -763,7 +763,7 @@ export default function MockTestManagementPage() {
 
           {/* TAB 2: EXAM PRESETS & BLUEPRINTS */}
           {activeTab === 'presets' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-out">
+            <div className="space-y-6 animate-in fade-in duration-150">
               <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -876,7 +876,7 @@ export default function MockTestManagementPage() {
 
           {/* TAB 3: WEEKLY DPP PAPERS */}
           {activeTab === 'weekly_dpp' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-out">
+            <div className="space-y-6 animate-in fade-in duration-150">
               <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">

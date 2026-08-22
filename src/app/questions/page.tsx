@@ -1545,7 +1545,7 @@ export default function QuestionManagementPage() {
 
               {/* LEVEL 1: SUBJECT MANAGEMENT */}
               {currentLevel === 'subjects' && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300 ease-out">
+                <div className="space-y-4 animate-in fade-in duration-150">
                   <div className="flex justify-between items-center">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Subject Management</h3>
@@ -1634,7 +1634,7 @@ export default function QuestionManagementPage() {
 
               {/* LEVEL 2: TOPIC MANAGEMENT */}
               {currentLevel === 'topics' && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 ease-out">
+                <div className="space-y-4 animate-in fade-in duration-150">
                   <div className="flex justify-between items-center">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
@@ -1741,7 +1741,7 @@ export default function QuestionManagementPage() {
 
               {/* LEVEL 3: QUESTION MANAGEMENT */}
               {currentLevel === 'questions' && (
-                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300 ease-out">
+                <div className="space-y-4 animate-in fade-in duration-150">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <h3 className="text-base font-extrabold text-slate-900 dark:text-white">

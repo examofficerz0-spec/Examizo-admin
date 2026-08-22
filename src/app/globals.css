@@ -113,24 +113,19 @@ h6 {
   @apply bg-slate-400 dark:bg-slate-600;
 }
 
-/* Native App-Style Smooth Horizontal Page Slide & Fade Transitions */
-@keyframes pageSlideIn {
+/* Native App-Style Smooth Fade Transitions (Completely stationary, zero jumping) */
+@keyframes pageFadeIn {
   0% {
-    opacity: 0;
-    transform: translateY(6px) scale(0.998);
+    opacity: 0.95;
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 .animate-page-in {
-  animation: pageSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: opacity, transform;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
+  animation: pageFadeIn 0.12s ease-out forwards;
 }
 
 /* Dropdown & Popover Spring Entrance Animations */
