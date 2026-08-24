@@ -17,8 +17,6 @@ export async function GET() {
 
     const isMaster = isSuperAdmin(currentAdmin) || hasPermission(currentAdmin, 'manage_admins');
 
-    await ensureD1Columns();
-
     const db = readSharedDb();
     const allAdmins: any[] = [];
     const seenIds = new Set<string>();

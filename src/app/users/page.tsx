@@ -13,6 +13,8 @@ import {
   isSuperAdmin,
   getRoleBadgeClass,
   canAccessCourse,
+  getAuthAdminFromCookie,
+  setCachedAuthAdmin,
 } from '@/lib/permissions';
 import {
   Users,
@@ -47,24 +49,17 @@ export default function UserManagementPage() {
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students');
 
   // Authenticated Admin State & Master Controller Detection
-  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
+  const [currentAdmin, setCurrentAdmin] = useState<any>(getAuthAdminFromCookie);
 
   useEffect(() => {
-    try {
-      const match = document.cookie.match(/admin_token=([^;]+)/);
-      if (match) {
-        const payloadBase64 = match[1].split('.')[1];
-        if (payloadBase64) {
-          const info = JSON.parse(atob(payloadBase64));
-          setCurrentAdmin(info);
-        }
-      }
-    } catch (_) {}
+    const cached = getAuthAdminFromCookie();
+    if (cached) setCurrentAdmin(cached);
 
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.admin) {
+          setCachedAuthAdmin(data.admin);
           setCurrentAdmin(data.admin);
         }
       })
@@ -74,11 +69,11 @@ export default function UserManagementPage() {
   const isMasterController = isSuperAdmin(currentAdmin);
   const canManageAdmins = isSuperAdmin(currentAdmin) || hasPermission(currentAdmin, 'manage_admins');
 
-  // Student State
+  // Student State with instant synchronous SWR cache
   const initialCache = getAdminSwrCache<{ users?: any[]; admins?: any[]; courses?: any[] }>('admin_users_cache');
   const [users, setUsers] = useState<any[]>(initialCache?.users || []);
   const [selectedStatsStudentId, setSelectedStatsStudentId] = useState<string | null>(null);
-  const [loadingUsers, setLoadingUsers] = useState(!initialCache?.users);
+  const [loadingUsers, setLoadingUsers] = useState(!initialCache?.users || initialCache.users.length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -96,9 +91,14 @@ export default function UserManagementPage() {
   const [selectedCourseForStudent, setSelectedCourseForStudent] = useState<string>('');
   const [savingCourse, setSavingCourse] = useState(false);
 
-  // Admin State & RBAC
+  // Admin State & RBAC with instant SWR cache fallback
   const [admins, setAdmins] = useState<any[]>(initialCache?.admins || []);
-  const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
+  const [courses, setCourses] = useState<any[]>(() => {
+    if (initialCache?.courses && initialCache.courses.length > 0) return initialCache.courses;
+    const coursesCache = getAdminSwrCache<any[]>('admin_courses_cache');
+    if (Array.isArray(coursesCache) && coursesCache.length > 0) return coursesCache;
+    return [];
+  });
   const [loadingAdmins, setLoadingAdmins] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
@@ -223,10 +223,33 @@ export default function UserManagementPage() {
   };
 
   const groupedUsers = useMemo(() => {
+    let filteredList = users;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      filteredList = filteredList.filter(
+        (u) =>
+          (u.name && u.name.toLowerCase().includes(q)) ||
+          (u.email && u.email.toLowerCase().includes(q))
+      );
+    }
+    if (statusFilter) {
+      filteredList = filteredList.filter((u) => u.status === statusFilter);
+    }
+    if (courseFilter === 'pending') {
+      filteredList = filteredList.filter(
+        (u) => !u.locked_course_id || String(u.locked_course_id?._id || u.locked_course_id).trim() === ''
+      );
+    } else if (courseFilter && courseFilter !== 'all') {
+      filteredList = filteredList.filter((u) => {
+        const cId = String(u.locked_course_id?._id || u.locked_course_id?.id || u.locked_course_id || '');
+        return cId === String(courseFilter);
+      });
+    }
+
     const groups: { [rootEmail: string]: any[] } = {};
     const order: string[] = [];
 
-    for (const u of users) {
+    for (const u of filteredList) {
       const root = getRootEmail(u);
       if (!groups[root]) {
         groups[root] = [];
@@ -249,14 +272,15 @@ export default function UserManagementPage() {
         subProfiles,
       };
     });
-  }, [users]);
+  }, [users, searchQuery, statusFilter, courseFilter]);
 
   const fetchCourses = async () => {
     try {
-      const res = await fetch('/api/courses');
+      const res = await fetch('/api/courses', { cache: 'no-store' });
       const data = await res.json();
       if (data && Array.isArray(data.courses)) {
         setCourses(data.courses);
+        setAdminSwrCache('admin_courses_cache', data.courses);
       }
     } catch (err) {
       console.error('Failed to fetch courses:', err);
@@ -361,19 +385,12 @@ export default function UserManagementPage() {
 
   const fetchUsers = async () => {
     try {
-      const params = new URLSearchParams();
-      if (searchQuery) params.set('q', searchQuery);
-      if (statusFilter) params.set('status', statusFilter);
-      if (courseFilter) params.set('course', courseFilter);
-
-      const res = await fetch(`/api/users?${params.toString()}`, { cache: 'no-store' });
+      const res = await fetch('/api/users', { cache: 'no-store' });
       const data = await res.json();
-      if (data.users) {
+      if (data && Array.isArray(data.users)) {
         setUsers(data.users);
-        if (!searchQuery && !statusFilter && !courseFilter) {
-          const cur = getAdminSwrCache<any>('admin_users_cache') || {};
-          setAdminSwrCache('admin_users_cache', { ...cur, users: data.users });
-        }
+        const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+        setAdminSwrCache('admin_users_cache', { ...cur, users: data.users });
       }
     } catch (err) {
       console.error(err);
@@ -391,12 +408,15 @@ export default function UserManagementPage() {
       const adminsData = await adminsRes.json();
       const coursesData = await coursesRes.json();
       if (adminsData.admins) setAdmins(adminsData.admins);
-      if (coursesData.courses) setCourses(coursesData.courses);
+      if (coursesData.courses) {
+        setCourses(coursesData.courses);
+        setAdminSwrCache('admin_courses_cache', coursesData.courses);
+      }
       const cur = getAdminSwrCache<any>('admin_users_cache') || {};
       setAdminSwrCache('admin_users_cache', {
         ...cur,
-        admins: adminsData.admins || [],
-        courses: coursesData.courses || [],
+        admins: adminsData.admins || cur.admins || [],
+        courses: coursesData.courses || cur.courses || [],
       });
     } catch (err) {
       console.error(err);
@@ -417,6 +437,8 @@ export default function UserManagementPage() {
     });
 
     fetchCourses();
+    fetchUsers();
+    fetchAdmins();
 
     return () => unsubscribe();
   }, []);
@@ -427,7 +449,7 @@ export default function UserManagementPage() {
     } else {
       fetchAdmins();
     }
-  }, [activeTab, searchQuery, statusFilter, courseFilter]);
+  }, [activeTab]);
 
   const handleRolePreset = (selectedRole: string) => {
     setAdminRole(selectedRole);

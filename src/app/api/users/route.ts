@@ -12,10 +12,8 @@ export async function GET(req: Request) {
     const admin = getAuthenticatedAdmin();
     const isMaster = admin?.role === 'Super Admin' || admin?.adminId === 'admin_master_1';
 
-    await ensureD1Columns();
-
     const { searchParams } = new URL(req.url);
-    const query = searchParams.get('query') || '';
+    const query = searchParams.get('q') || searchParams.get('query') || '';
     const statusFilter = searchParams.get('status');
     const courseFilter = searchParams.get('course');
 

@@ -225,15 +225,24 @@ export async function prefetchAllAdminData(force = false): Promise<void> {
         })
         .catch(() => {}),
 
-      // 4. Users & Admins
-      fetch('/api/users', { cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && (data.users || data.admins)) {
-            setAdminSwrCache('admin_users_cache', data);
-          }
-        })
-        .catch(() => {}),
+      // 4. Users, Admins & Courses
+      Promise.all([
+        fetch('/api/users', { cache: 'no-store' }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+        fetch('/api/admins', { cache: 'no-store' }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+        fetch('/api/courses', { cache: 'no-store' }).then((res) => (res.ok ? res.json() : null)).catch(() => null),
+      ]).then(([uData, aData, cData]) => {
+        if (uData?.users || aData?.admins || cData?.courses) {
+          const cur = getAdminSwrCache<any>('admin_users_cache') || {};
+          const usersList = uData?.users || cur.users || [];
+          const adminsList = aData?.admins || cur.admins || [];
+          const coursesList = cData?.courses || cur.courses || [];
+          setAdminSwrCache('admin_users_cache', {
+            users: usersList,
+            admins: adminsList,
+            courses: coursesList,
+          });
+        }
+      }).catch(() => {}),
 
       // 5. Gallery
       fetch('/api/gallery', { cache: 'no-store' })
