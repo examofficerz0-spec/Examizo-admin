@@ -19,32 +19,28 @@ import {
   Crown,
   Shield,
 } from 'lucide-react';
-import { hasPermission, isSuperAdmin, getRoleBadgeClass } from '@/lib/permissions';
+import { hasPermission, isSuperAdmin, getRoleBadgeClass, getAuthAdminFromCookie, setCachedAuthAdmin } from '@/lib/permissions';
 
 export const AdminSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminInfo, setAdminInfo] = useState<any>(null);
+  const [adminInfo, setAdminInfo] = useState<any>(getAuthAdminFromCookie);
 
   useEffect(() => {
     const handleToggle = () => setMobileOpen((prev) => !prev);
     const handleClose = () => setMobileOpen(false);
 
-    try {
-      const match = document.cookie.match(/admin_token=([^;]+)/);
-      if (match) {
-        const payloadBase64 = match[1].split('.')[1];
-        if (payloadBase64) {
-          setAdminInfo(JSON.parse(atob(payloadBase64)));
-        }
-      }
-    } catch (e) {}
+    const cached = getAuthAdminFromCookie();
+    if (cached && !adminInfo) {
+      setAdminInfo(cached);
+    }
 
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.admin) {
+          setCachedAuthAdmin(data.admin);
           setAdminInfo(data.admin);
         }
       })

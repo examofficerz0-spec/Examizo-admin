@@ -118,8 +118,7 @@ export default function StudentPerformancePage() {
   }, [activeCourseObj, searchQuery]);
 
   return (
-    <AdminAccessGuard permission="view_student_performance" permissions={['manage_users']} pageTitle="Student Performance & Leaderboards">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -128,7 +127,8 @@ export default function StudentPerformancePage() {
           subtitle="Select any course from the dropdown to inspect Top 20 batch standings, total XP, and student analytics."
         />
 
-        <main className="p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 overflow-y-auto">
+        <AdminAccessGuard permission="view_student_performance" permissions={['manage_users']} pageTitle="Student Performance & Leaderboards">
+          <main className="p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 overflow-y-auto">
           {/* Header Bar with Back to Dashboard Link & Course Catalogue Dropdown */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
             <div>
@@ -341,10 +341,10 @@ export default function StudentPerformancePage() {
               </div>
             </div>
           )}
-        </>
-      )}
-
-        </main>
+          </>
+        )}
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* Student Statistics Analytics Modal */}
@@ -354,7 +354,6 @@ export default function StudentPerformancePage() {
           onClose={() => setSelectedStudentId(null)}
         />
       )}
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

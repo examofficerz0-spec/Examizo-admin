@@ -104,14 +104,14 @@ export default function AuditLogsPage() {
   };
 
   return (
-    <AdminAccessGuard permission="view_audit_logs" pageTitle="Audit Trail & System Logs">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
         <AdminHeader title="Audit Trail & System Logs" subtitle="Administrative action logs and security records" />
 
-        <main className="p-6 sm:p-8 space-y-6 flex-1 overflow-y-auto max-w-7xl mx-auto w-full">
+        <AdminAccessGuard permission="view_audit_logs" pageTitle="Audit Trail & System Logs">
+          <main className="p-6 sm:p-8 space-y-6 flex-1 overflow-y-auto max-w-7xl mx-auto w-full">
           
           {/* Header Action Row */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
@@ -246,8 +246,8 @@ export default function AuditLogsPage() {
               </div>
             )}
           </div>
-
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* Clear Logs Confirmation Modal */}
@@ -290,8 +290,6 @@ export default function AuditLogsPage() {
           </div>
         </div>
       )}
-
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

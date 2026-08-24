@@ -246,8 +246,7 @@ export default function AdminGalleryPage() {
   const categoriesList = Array.from(new Set(items.map((it) => it.category).filter(Boolean)));
 
   return (
-    <AdminAccessGuard permission="manage_gallery" pageTitle="Gallery Showcase">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -256,7 +255,8 @@ export default function AdminGalleryPage() {
           subtitle="Add, curate, and organize high-resolution photos shown on the student portal"
         />
 
-        <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto max-w-7xl mx-auto w-full">
+        <AdminAccessGuard permission="manage_gallery" pageTitle="Gallery Showcase">
+          <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto max-w-7xl mx-auto w-full">
           {/* Header Banner */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl">
             <div className="space-y-2">
@@ -439,7 +439,8 @@ export default function AdminGalleryPage() {
               ))}
             </div>
           )}
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* Upload/Edit Modal */}
@@ -628,8 +629,6 @@ export default function AdminGalleryPage() {
           </div>
         </div>
       )}
-
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

@@ -810,16 +810,16 @@ export default function UserManagementPage() {
   const masterAdminRecord = admins.find((a) => a._id === 'admin_master_1' || a.role === 'Super Admin');
 
   return (
-    <AdminAccessGuard permission="manage_users" permissions={['manage_admins']} pageTitle="User & Admin Management">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
-        <AdminSidebar />
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+      <AdminSidebar />
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <AdminHeader
-            title="User & Admin Management"
-            subtitle="Manage student accounts, credentials, and configure administrative RBAC personnel (FR-36, FR-37)"
-          />
+      <div className="flex-1 flex flex-col min-w-0">
+        <AdminHeader
+          title="User & Admin Management"
+          subtitle="Manage student accounts, credentials, and configure administrative RBAC personnel (FR-36, FR-37)"
+        />
 
+        <AdminAccessGuard permission="manage_users" permissions={['manage_admins']} pageTitle="User & Admin Management">
           <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
             {/* Category Tabs */}
             <div className="flex border-b border-slate-200 dark:border-slate-800">
@@ -1511,7 +1511,8 @@ export default function UserManagementPage() {
               </div>
             </div>
           )}
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* MASTER CONTROLLER CREDENTIALS MODAL */}
@@ -2386,7 +2387,6 @@ export default function UserManagementPage() {
           onClose={() => setSelectedStatsStudentId(null)}
         />
       )}
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

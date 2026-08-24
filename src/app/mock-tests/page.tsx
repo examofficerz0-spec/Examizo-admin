@@ -672,8 +672,7 @@ export default function MockTestManagementPage() {
   };
 
   return (
-    <AdminAccessGuard permission="manage_mock_tests" pageTitle="Mock Tests & DPP">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -682,7 +681,8 @@ export default function MockTestManagementPage() {
           subtitle="Configure exam presets, auto-shuffling mock tests, and weekly daily practice papers"
         />
 
-        <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
+        <AdminAccessGuard permission="manage_mock_tests" pageTitle="Mock Tests & DPP">
+          <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
           {/* Header Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <button
@@ -1000,7 +1000,8 @@ export default function MockTestManagementPage() {
               </div>
             </div>
           )}
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* CREATE EXAM PRESET MODAL */}
@@ -1834,7 +1835,6 @@ export default function MockTestManagementPage() {
           </div>
         </div>
       )}
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

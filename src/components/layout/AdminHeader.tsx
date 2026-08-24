@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Logo } from '../common/Logo';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { ArrowLeft, Menu, Crown, Shield } from 'lucide-react';
-import { isSuperAdmin, getRoleBadgeClass } from '@/lib/permissions';
+import { isSuperAdmin, getRoleBadgeClass, getAuthAdminFromCookie, setCachedAuthAdmin } from '@/lib/permissions';
 
 interface AdminHeaderProps {
   title?: string;
@@ -23,30 +23,27 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   showBack = true,
 }) => {
   const router = useRouter();
-  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
-  const [displayName, setDisplayName] = useState(adminName || 'Admin');
+  const [currentAdmin, setCurrentAdmin] = useState<any>(getAuthAdminFromCookie);
+  const [displayName, setDisplayName] = useState<string>(() => {
+    if (adminName) return adminName;
+    const cached = getAuthAdminFromCookie();
+    return cached?.name || 'Admin';
+  });
 
   useEffect(() => {
-    try {
-      const match = document.cookie.match(/admin_token=([^;]+)/);
-      if (match) {
-        const payloadBase64 = match[1].split('.')[1];
-        if (payloadBase64) {
-          const decoded = JSON.parse(atob(payloadBase64));
-          setCurrentAdmin(decoded);
-          if (decoded.name) {
-            setDisplayName(decoded.name);
-          }
-        }
-      }
-    } catch (e) {}
+    const cached = getAuthAdminFromCookie();
+    if (cached) {
+      setCurrentAdmin(cached);
+      if (cached.name && !adminName) setDisplayName(cached.name);
+    }
 
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.admin) {
+          setCachedAuthAdmin(data.admin);
           setCurrentAdmin(data.admin);
-          if (data.admin.name) {
+          if (data.admin.name && !adminName) {
             setDisplayName(data.admin.name);
           }
         }

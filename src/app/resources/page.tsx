@@ -227,14 +227,14 @@ export default function AdminResourcesPage() {
   });
 
   return (
-    <AdminAccessGuard permission="manage_resources" pageTitle="Resource Center">
-      <div className="flex min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+    <div className="flex min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
         <AdminHeader title="Resource Center & Digital Book Management" />
 
-        <main className="flex-1 p-6 sm:p-8 space-y-6 overflow-y-auto">
+        <AdminAccessGuard permission="manage_resources" pageTitle="Resource Center">
+          <main className="flex-1 p-6 sm:p-8 space-y-6 overflow-y-auto">
           
           {/* Top Banner Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 shadow-xs">
@@ -380,7 +380,8 @@ export default function AdminResourcesPage() {
               ))
             )}
           </div>
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* ADD / EDIT RESOURCE MODAL */}
@@ -598,7 +599,6 @@ export default function AdminResourcesPage() {
           </div>
         </div>
       )}
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }

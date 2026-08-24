@@ -47,7 +47,7 @@ export function AdminDataSynchronizer() {
       document.removeEventListener('visibilitychange', handleFocusOrVisibility);
       window.removeEventListener('examizo_admin_mutation', handleLocalMutation);
     };
-  }, [pathname]);
+  }, []);
 
   return null;
 }

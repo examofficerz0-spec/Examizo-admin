@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ShieldAlert, ArrowLeft, Lock, Crown } from 'lucide-react';
-import { hasPermission, isSuperAdmin } from '@/lib/permissions';
+import { hasPermission, isSuperAdmin, getAuthAdminFromCookie, setCachedAuthAdmin } from '@/lib/permissions';
 
 interface AdminAccessGuardProps {
   children: React.ReactNode;
@@ -20,27 +20,21 @@ export const AdminAccessGuard: React.FC<AdminAccessGuardProps> = ({
   requireSuperAdmin = false,
   pageTitle = 'This Section',
 }) => {
-  const [admin, setAdmin] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [admin, setAdmin] = useState<any>(getAuthAdminFromCookie);
+  const [loading, setLoading] = useState(!getAuthAdminFromCookie());
 
   useEffect(() => {
-    try {
-      const match = document.cookie.match(/admin_token=([^;]+)/);
-      if (match) {
-        const payloadBase64 = match[1].split('.')[1];
-        if (payloadBase64) {
-          const decoded = JSON.parse(atob(payloadBase64));
-          setAdmin(decoded);
-          setLoading(false);
-          return;
-        }
-      }
-    } catch (_) {}
+    const cached = getAuthAdminFromCookie();
+    if (cached) {
+      setAdmin(cached);
+      setLoading(false);
+    }
 
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.admin) {
+          setCachedAuthAdmin(data.admin);
           setAdmin(data.admin);
         }
       })
@@ -48,14 +42,7 @@ export const AdminAccessGuard: React.FC<AdminAccessGuardProps> = ({
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-slate-500 font-medium">Verifying platform authorizations...</span>
-        </div>
-      </div>
-    );
+    return <>{children}</>;
   }
 
   const isSuper = isSuperAdmin(admin);

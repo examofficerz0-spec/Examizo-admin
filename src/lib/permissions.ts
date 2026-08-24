@@ -196,3 +196,32 @@ export function getRoleBadgeClass(roleName: string): string {
       return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
   }
 }
+
+let inMemoryCachedAdmin: any = null;
+
+/**
+ * Synchronously retrieves authenticated admin information from client cookie/cache.
+ * Eliminates routing stutter and component re-mounting flicker.
+ */
+export function getAuthAdminFromCookie(): any {
+  if (inMemoryCachedAdmin) return inMemoryCachedAdmin;
+  if (typeof document !== 'undefined') {
+    try {
+      const match = document.cookie.match(/admin_token=([^;]+)/);
+      if (match) {
+        const payloadBase64 = match[1].split('.')[1];
+        if (payloadBase64) {
+          const parsed = JSON.parse(atob(payloadBase64));
+          inMemoryCachedAdmin = parsed;
+          return parsed;
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+export function setCachedAuthAdmin(admin: any) {
+  inMemoryCachedAdmin = admin;
+}
+

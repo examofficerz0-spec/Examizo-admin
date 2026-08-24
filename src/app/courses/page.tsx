@@ -239,14 +239,14 @@ export default function CourseManagementPage() {
   const competitiveCourses = courses.filter((c) => !isSchoolCategory(c));
 
   return (
-    <AdminAccessGuard permission="manage_courses" pageTitle="Course Management">
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
         <AdminHeader title="Course Management" subtitle="Manage course catalogue across Competitive & School Exams (FR-33, FR-34, FR-35)" />
 
-        <main className="p-8 space-y-6 flex-1 overflow-y-auto">
+        <AdminAccessGuard permission="manage_courses" pageTitle="Course Management">
+          <main className="p-8 space-y-6 flex-1 overflow-y-auto">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Active Course Catalogue</h2>
@@ -501,7 +501,8 @@ export default function CourseManagementPage() {
               )}
             </div>
           )}
-        </main>
+          </main>
+        </AdminAccessGuard>
       </div>
 
       {/* Add Course Modal */}
@@ -821,7 +822,6 @@ export default function CourseManagementPage() {
           </div>
         </div>
       )}
-      </div>
-    </AdminAccessGuard>
+    </div>
   );
 }
