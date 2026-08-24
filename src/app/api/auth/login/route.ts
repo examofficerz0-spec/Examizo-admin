@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { readSharedDb } from '@/lib/sharedDb';
 import { signAdminToken } from '@/lib/auth';
 import { queryD1 } from '@/lib/d1';
+import { ROLE_PRESETS } from '@/lib/permissions';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
       }
       return options;
     };
+
+    const superAdminPerms = ROLE_PRESETS['Super Admin'].permissions;
 
     // Check Master Controller credentials in sharedDb
     const db = readSharedDb();
@@ -55,7 +58,7 @@ export async function POST(req: Request) {
               email: masterAdmin.email || 'admin',
               name: masterAdmin.name || 'Master Controller',
               role: 'Super Admin',
-              permissions: ['all'],
+              permissions: superAdminPerms,
               allowed_courses: ['all'],
             },
             !!rememberMe
@@ -68,7 +71,7 @@ export async function POST(req: Request) {
               name: masterAdmin.name || 'Master Controller',
               email: masterAdmin.email || 'admin',
               role: 'Super Admin',
-              permissions: ['all'],
+              permissions: superAdminPerms,
               allowed_courses: ['all'],
             },
           });
@@ -86,13 +89,13 @@ export async function POST(req: Request) {
         email: 'admin',
         name: 'Master Controller',
         role: 'Super Admin',
-        permissions: ['all'],
+        permissions: superAdminPerms,
         allowed_courses: ['all'],
       }, !!rememberMe);
 
       const response = NextResponse.json({
         success: true,
-        admin: { id: 'admin_master_1', name: 'Master Controller', email: 'admin', role: 'Super Admin', permissions: ['all'], allowed_courses: ['all'] },
+        admin: { id: 'admin_master_1', name: 'Master Controller', email: 'admin', role: 'Super Admin', permissions: superAdminPerms, allowed_courses: ['all'] },
       });
 
       response.cookies.set('admin_token', token, getCookieOptions());
@@ -106,10 +109,11 @@ export async function POST(req: Request) {
         const admin = d1Admins[0];
         const isMatch = (await bcrypt.compare(password, admin.password_hash)) || password === 'admin' || password === 'Admin@123456';
         if (isMatch) {
-          let permissions = ['all'];
+          const isSuper = admin.role === 'Super Admin' || admin.id === 'admin_master_1';
+          let permissions = isSuper ? superAdminPerms : ['manage_questions'];
           let allowed_courses = ['all'];
           try {
-            if (admin.permissions_json) permissions = JSON.parse(admin.permissions_json);
+            if (admin.permissions_json && !isSuper) permissions = JSON.parse(admin.permissions_json);
             if (admin.allowed_courses_json) allowed_courses = JSON.parse(admin.allowed_courses_json);
           } catch (_) {}
 
@@ -119,12 +123,19 @@ export async function POST(req: Request) {
             name: admin.name,
             role: admin.role,
             permissions,
-            allowed_courses,
+            allowed_courses: isSuper ? ['all'] : allowed_courses,
           }, !!rememberMe);
 
           const response = NextResponse.json({
             success: true,
-            admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role, permissions, allowed_courses },
+            admin: {
+              id: admin.id,
+              name: admin.name,
+              email: admin.email,
+              role: admin.role,
+              permissions,
+              allowed_courses: isSuper ? ['all'] : allowed_courses,
+            },
           });
 
           response.cookies.set('admin_token', token, getCookieOptions());
@@ -146,8 +157,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
-    const permissions = admin.permissions || (admin.role === 'Super Admin' ? ['all'] : ['manage_questions']);
-    const allowed_courses = admin.allowed_courses || ['all'];
+    const isSuper = admin.role === 'Super Admin' || admin._id === 'admin_master_1';
+    const permissions = isSuper ? superAdminPerms : (admin.permissions || ['manage_questions']);
+    const allowed_courses = isSuper ? ['all'] : (admin.allowed_courses || ['all']);
 
     const token = signAdminToken({
       adminId: admin._id,

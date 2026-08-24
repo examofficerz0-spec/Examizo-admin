@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1 } from '@/lib/d1';
+import { hasPermission, isSuperAdmin, ROLE_PRESETS } from '@/lib/permissions';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,10 @@ export const revalidate = 0;
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     const currentAdmin = getAuthenticatedAdmin();
+    if (!currentAdmin || (!isSuperAdmin(currentAdmin) && !hasPermission(currentAdmin, 'manage_admins'))) {
+      return NextResponse.json({ error: 'Forbidden: Insufficient privileges to update administrative roles.' }, { status: 403 });
+    }
+
     const rawTargetId = decodeURIComponent(params.id).trim();
     const { name, role, permissions, allowed_courses, password } = await req.json();
 
@@ -43,16 +48,21 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     const updatedName = name || d1Admin?.name || admin?.name;
     const updatedRole = role || d1Admin?.role || admin?.role;
-    const updatedPerms =
-      permissions ||
-      (d1Admin?.permissions_json ? JSON.parse(d1Admin.permissions_json) : admin?.permissions) || [
-        'manage_questions',
-      ];
-    const updatedCourses =
-      allowed_courses ||
-      (d1Admin?.allowed_courses_json ? JSON.parse(d1Admin.allowed_courses_json) : admin?.allowed_courses) || [
-        'all',
-      ];
+    const isTargetSuper = updatedRole === 'Super Admin';
+
+    const updatedPerms = isTargetSuper
+      ? ROLE_PRESETS['Super Admin'].permissions
+      : permissions ||
+        (d1Admin?.permissions_json ? JSON.parse(d1Admin.permissions_json) : admin?.permissions) || [
+          'manage_questions',
+        ];
+
+    const updatedCourses = isTargetSuper
+      ? ['all']
+      : allowed_courses ||
+        (d1Admin?.allowed_courses_json ? JSON.parse(d1Admin.allowed_courses_json) : admin?.allowed_courses) || [
+          'all',
+        ];
 
     // 1. Update D1
     try {
@@ -89,8 +99,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (admin) {
       if (name) admin.name = name;
       if (role) admin.role = role;
-      if (permissions) admin.permissions = permissions;
-      if (allowed_courses) admin.allowed_courses = allowed_courses;
+      admin.permissions = updatedPerms;
+      admin.allowed_courses = updatedCourses;
       if (password_hash) {
         admin.password_hash = password_hash;
         admin.raw_password = password;
@@ -104,7 +114,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       admin_name: currentAdmin?.name || 'Admin',
       action_type: 'UPDATE_ADMIN_ROLE',
       affected_entity_id: rawTargetId,
-      details: `Updated administrative account "${d1Admin?.email || admin?.email || rawTargetId}" (${updatedName}) with role "${updatedRole}"`,
+      details: `Updated administrative account "${d1Admin?.email || admin?.email || rawTargetId}" (${updatedName}) with role "${updatedRole}" and permissions: [${updatedPerms.join(', ')}]`,
       timestamp: new Date().toISOString(),
     });
 
@@ -121,6 +131,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     const currentAdmin = getAuthenticatedAdmin();
+    if (!currentAdmin || (!isSuperAdmin(currentAdmin) && !hasPermission(currentAdmin, 'manage_admins'))) {
+      return NextResponse.json({ error: 'Forbidden: Insufficient privileges to remove administrative personnel.' }, { status: 403 });
+    }
+
     const rawTargetId = decodeURIComponent(params.id).trim();
 
     if (

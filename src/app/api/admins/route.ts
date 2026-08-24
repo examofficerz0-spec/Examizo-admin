@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { readSharedDb, writeSharedDb, generateId } from '@/lib/sharedDb';
 import { getAuthenticatedAdmin } from '@/lib/auth';
 import { queryD1, executeD1, ensureD1Columns } from '@/lib/d1';
+import { hasPermission, isSuperAdmin, ROLE_PRESETS } from '@/lib/permissions';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,11 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const currentAdmin = getAuthenticatedAdmin();
-    const isMaster = currentAdmin?.role === 'Super Admin' || currentAdmin?.adminId === 'admin_master_1';
+    if (!currentAdmin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const isMaster = isSuperAdmin(currentAdmin) || hasPermission(currentAdmin, 'manage_admins');
 
     await ensureD1Columns();
 
@@ -46,15 +51,17 @@ export async function GET() {
             sharedMatch?.raw_password ||
             (a.role === 'Super Admin' || aId === 'admin_master_1' || aEmail === 'admin' ? 'Admin@123456' : undefined);
 
+          const isRowSuper = a.role === 'Super Admin' || aId === 'admin_master_1' || aEmail === 'admin';
+
           allAdmins.push({
             _id: aId,
             id: aId,
             name: a.name,
             email: a.email,
-            role: a.role || 'Admin',
+            role: a.role || 'Question Contributor',
             raw_password: isMaster ? effectiveRawPass : undefined,
-            permissions: a.role === 'Super Admin' ? ['all'] : permissions,
-            allowed_courses,
+            permissions: isRowSuper ? ROLE_PRESETS['Super Admin'].permissions : permissions,
+            allowed_courses: isRowSuper ? ['all'] : allowed_courses,
             created_at: a.created_at || new Date().toISOString(),
           });
 
@@ -71,15 +78,16 @@ export async function GET() {
         const email = String(a.email || '').toLowerCase().trim();
 
         if (!seenIds.has(id) && !seenEmails.has(email)) {
+          const isRowSuper = a.role === 'Super Admin' || id === 'admin_master_1' || email === 'admin';
           allAdmins.push({
             _id: id,
             id: id,
             name: a.name,
             email: a.email,
-            role: a.role || 'Admin',
-            raw_password: isMaster ? (a.raw_password || (a.role === 'Super Admin' ? 'Admin@123456' : undefined)) : undefined,
-            permissions: a.permissions || (a.role === 'Super Admin' ? ['all'] : ['manage_questions']),
-            allowed_courses: a.allowed_courses || ['all'],
+            role: a.role || 'Question Contributor',
+            raw_password: isMaster ? (a.raw_password || (isRowSuper ? 'Admin@123456' : undefined)) : undefined,
+            permissions: isRowSuper ? ROLE_PRESETS['Super Admin'].permissions : (a.permissions || ['manage_questions']),
+            allowed_courses: isRowSuper ? ['all'] : (a.allowed_courses || ['all']),
             created_at: a.created_at || new Date().toISOString(),
           });
           seenIds.add(id);
@@ -97,6 +105,10 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const currentAdmin = getAuthenticatedAdmin();
+    if (!currentAdmin || (!isSuperAdmin(currentAdmin) && !hasPermission(currentAdmin, 'manage_admins'))) {
+      return NextResponse.json({ error: 'Forbidden: Insufficient privileges to assign new administrative personnel.' }, { status: 403 });
+    }
+
     const { name, email, password, role, permissions, allowed_courses } = await req.json();
 
     if (!name || !email || !password) {
@@ -106,8 +118,13 @@ export async function POST(req: Request) {
     await ensureD1Columns();
 
     const lowerEmail = email.toLowerCase().trim();
-    const finalPermissions = permissions && permissions.length > 0 ? permissions : (role === 'Super Admin' ? ['all'] : ['manage_questions']);
-    const finalCourses = allowed_courses && allowed_courses.length > 0 ? allowed_courses : ['all'];
+    const isSuper = role === 'Super Admin';
+    const finalPermissions = isSuper
+      ? ROLE_PRESETS['Super Admin'].permissions
+      : (permissions && permissions.length > 0 ? permissions : ['manage_questions']);
+    const finalCourses = isSuper
+      ? ['all']
+      : (allowed_courses && allowed_courses.length > 0 ? allowed_courses : ['all']);
 
     const db = readSharedDb();
     const existing = (db.admins || []).find((a) => (a.email || '').toLowerCase().trim() === lowerEmail);
@@ -124,7 +141,7 @@ export async function POST(req: Request) {
       email: lowerEmail,
       password_hash,
       raw_password: password.trim(),
-      role: role || 'Course Manager',
+      role: role || 'Question Contributor',
       permissions: finalPermissions,
       allowed_courses: finalCourses,
       created_at: new Date().toISOString(),
@@ -155,7 +172,7 @@ export async function POST(req: Request) {
       admin_name: currentAdmin?.name || 'Admin',
       action_type: 'ASSIGN_ADMIN',
       affected_entity_id: newAdmin._id,
-      details: `Assigned new admin user "${lowerEmail}" with role "${newAdmin.role}"`,
+      details: `Assigned new admin user "${lowerEmail}" with role "${newAdmin.role}" and scope: ${finalCourses.includes('all') ? 'All Courses' : finalCourses.join(', ')}`,
       timestamp: new Date().toISOString(),
     });
 

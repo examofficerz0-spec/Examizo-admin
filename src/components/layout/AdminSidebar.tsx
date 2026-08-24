@@ -4,7 +4,22 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Logo } from '../common/Logo';
-import { LayoutDashboard, HelpCircle, BookOpen, Users, ClipboardList, FileCheck, LogOut, X, FolderDown, Trophy, Image as ImageIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  HelpCircle,
+  BookOpen,
+  Users,
+  ClipboardList,
+  FileCheck,
+  LogOut,
+  X,
+  FolderDown,
+  Trophy,
+  Image as ImageIcon,
+  Crown,
+  Shield,
+} from 'lucide-react';
+import { hasPermission, isSuperAdmin, getRoleBadgeClass } from '@/lib/permissions';
 
 export const AdminSidebar: React.FC = () => {
   const pathname = usePathname();
@@ -26,6 +41,15 @@ export const AdminSidebar: React.FC = () => {
       }
     } catch (e) {}
 
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.admin) {
+          setAdminInfo(data.admin);
+        }
+      })
+      .catch(() => {});
+
     window.addEventListener('toggleAdminSidebar', handleToggle);
     window.addEventListener('closeAdminSidebar', handleClose);
     return () => {
@@ -41,8 +65,7 @@ export const AdminSidebar: React.FC = () => {
     window.location.href = '/login';
   };
 
-  const isSuper = !adminInfo || adminInfo.role === 'Super Admin' || (adminInfo.permissions || []).includes('all');
-  const perms = adminInfo?.permissions || [];
+  const isSuper = isSuperAdmin(adminInfo);
 
   const rawNavItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, perm: 'always' },
@@ -50,21 +73,32 @@ export const AdminSidebar: React.FC = () => {
     { label: 'Mock Tests', href: '/mock-tests', icon: FileCheck, perm: 'manage_mock_tests' },
     { label: 'Resource Center', href: '/resources', icon: FolderDown, perm: 'manage_resources' },
     { label: 'Course Catalogue', href: '/courses', icon: BookOpen, perm: 'manage_courses' },
-    { label: 'Gallery Showcase', href: '/gallery', icon: ImageIcon, perm: 'always' },
+    { label: 'Gallery Showcase', href: '/gallery', icon: ImageIcon, perm: 'manage_gallery' },
     { label: 'User Management', href: '/users', icon: Users, perm: 'manage_users' },
-    { label: 'Student Performance', href: '/student-performance', icon: Trophy, perm: 'manage_users' },
+    { label: 'Student Performance', href: '/student-performance', icon: Trophy, perm: 'view_student_performance' },
     { label: 'Audit Logs', href: '/audit-logs', icon: ClipboardList, perm: 'view_audit_logs' },
   ];
 
   const navItems = rawNavItems.filter((item) => {
     if (item.perm === 'always' || isSuper) return true;
-    return perms.includes(item.perm);
+    if (item.href === '/users') {
+      return hasPermission(adminInfo, 'manage_users') || hasPermission(adminInfo, 'manage_admins');
+    }
+    if (item.href === '/student-performance') {
+      return hasPermission(adminInfo, 'view_student_performance') || hasPermission(adminInfo, 'manage_users');
+    }
+    if (item.href === '/gallery') {
+      return true; // Gallery can be browsed, manage_gallery protects uploads/deletions
+    }
+    return hasPermission(adminInfo, item.perm);
   });
+
+  const roleName = adminInfo?.role || (isSuper ? 'Super Admin' : 'Admin Personnel');
 
   const renderSidebarBody = (isMobile: boolean) => (
     <div className="flex flex-col justify-between h-full">
       <div className="p-5">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-5">
           <Logo />
           {isMobile && (
             <button
@@ -74,6 +108,23 @@ export const AdminSidebar: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
           )}
+        </div>
+
+        {/* Current Admin Role Pill */}
+        <div className="mb-6 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-2">
+          {isSuper ? (
+            <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+          ) : (
+            <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-black text-slate-900 dark:text-white truncate">
+              {adminInfo?.name || 'Administrator'}
+            </div>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 truncate">
+              {roleName}
+            </div>
+          </div>
         </div>
 
         <nav className="space-y-1.5">

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { CustomSelect } from '@/components/ui/CustomSelect';
 import { getAdminSwrCache, setAdminSwrCache } from '@/lib/adminSwrCache';
 import {
@@ -226,7 +227,8 @@ export default function AdminResourcesPage() {
   });
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+    <AdminAccessGuard permission="manage_resources" pageTitle="Resource Center">
+      <div className="flex min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -596,6 +598,7 @@ export default function AdminResourcesPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

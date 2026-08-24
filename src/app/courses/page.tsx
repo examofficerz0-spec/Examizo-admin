@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { BookOpen, Plus, Trash2, AlertTriangle, X, Trophy, GraduationCap, ChevronDown, Edit2 } from 'lucide-react';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 
@@ -238,7 +239,8 @@ export default function CourseManagementPage() {
   const competitiveCourses = courses.filter((c) => !isSchoolCategory(c));
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <AdminAccessGuard permission="manage_courses" pageTitle="Course Management">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -819,6 +821,7 @@ export default function CourseManagementPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

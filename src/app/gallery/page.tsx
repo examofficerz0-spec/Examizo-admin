@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminHeader } from '@/components/layout/AdminHeader';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 import { 
   Plus, 
@@ -245,7 +246,8 @@ export default function AdminGalleryPage() {
   const categoriesList = Array.from(new Set(items.map((it) => it.category).filter(Boolean)));
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <AdminAccessGuard permission="manage_gallery" pageTitle="Gallery Showcase">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -627,6 +629,7 @@ export default function AdminGalleryPage() {
         </div>
       )}
 
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache } from '@/lib/adminSwrCache';
 
@@ -117,7 +118,8 @@ export default function StudentPerformancePage() {
   }, [activeCourseObj, searchQuery]);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+    <AdminAccessGuard permission="view_student_performance" permissions={['manage_users']} pageTitle="Student Performance & Leaderboards">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -352,6 +354,7 @@ export default function StudentPerformancePage() {
           onClose={() => setSelectedStudentId(null)}
         />
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

@@ -5,7 +5,9 @@ import * as XLSX from 'xlsx';
 import { useRouter } from 'next/navigation';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { CustomSelect } from '@/components/ui/CustomSelect';
+import { canAccessCourse } from '@/lib/permissions';
 import {
   BookOpen,
   FolderPlus,
@@ -170,7 +172,9 @@ export default function QuestionManagementPage() {
 
       let loadedCourses = cData.courses || [];
       if (adminInfo && adminInfo.allowed_courses && !adminInfo.allowed_courses.includes('all') && adminInfo.role !== 'Super Admin') {
-        loadedCourses = loadedCourses.filter((c: any) => adminInfo.allowed_courses.includes(c._id || c.id));
+        loadedCourses = loadedCourses.filter((c: any) =>
+          adminInfo.allowed_courses.some((ac: string) => String(ac) === String(c._id || c.id))
+        );
       }
 
       const newCache = {
@@ -1443,7 +1447,8 @@ export default function QuestionManagementPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <AdminAccessGuard permission="manage_questions" pageTitle="Question Bank">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -2604,6 +2609,7 @@ export default function QuestionManagementPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

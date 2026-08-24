@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Logo } from '../common/Logo';
 import { ThemeToggle } from '../common/ThemeToggle';
-import { ArrowLeft, Menu } from 'lucide-react';
+import { ArrowLeft, Menu, Crown, Shield } from 'lucide-react';
+import { isSuperAdmin, getRoleBadgeClass } from '@/lib/permissions';
 
 interface AdminHeaderProps {
   title?: string;
@@ -22,6 +23,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   showBack = true,
 }) => {
   const router = useRouter();
+  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
   const [displayName, setDisplayName] = useState(adminName || 'Admin');
 
   useEffect(() => {
@@ -31,12 +33,25 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         const payloadBase64 = match[1].split('.')[1];
         if (payloadBase64) {
           const decoded = JSON.parse(atob(payloadBase64));
+          setCurrentAdmin(decoded);
           if (decoded.name) {
             setDisplayName(decoded.name);
           }
         }
       }
     } catch (e) {}
+
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.admin) {
+          setCurrentAdmin(data.admin);
+          if (data.admin.name) {
+            setDisplayName(data.admin.name);
+          }
+        }
+      })
+      .catch(() => {});
   }, [adminName]);
 
   const handleBackClick = () => {
@@ -50,6 +65,9 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   const handleToggleSidebar = () => {
     window.dispatchEvent(new Event('toggleAdminSidebar'));
   };
+
+  const isSuper = isSuperAdmin(currentAdmin);
+  const roleName = currentAdmin?.role || (isSuper ? 'Super Admin' : 'Admin');
 
   return (
     <header className="border-b border-slate-200/50 dark:border-slate-800/60 bg-white/65 dark:bg-slate-900/65 backdrop-blur-2xl backdrop-saturate-180 px-4 sm:px-8 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08),0_2px_6px_-1px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] transition-all">
@@ -94,14 +112,19 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
 
         <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block" />
 
-        {/* Logged in Admin Profile Name */}
-        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+        {/* Logged in Admin Profile Name & Role */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
           <div className="w-7 h-7 rounded-full bg-[#0B192C] text-white flex items-center justify-center font-bold text-xs shadow-xs">
             {displayName.charAt(0).toUpperCase()}
           </div>
-          <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">
-            {displayName}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 leading-tight">
+              {displayName}
+            </span>
+            <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 leading-tight">
+              {roleName}
+            </span>
+          </div>
         </div>
       </div>
     </header>

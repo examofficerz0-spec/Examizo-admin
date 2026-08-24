@@ -3,8 +3,17 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { StudentStatsModal } from '@/components/ui/StudentStatsModal';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
+import {
+  ALL_PERMISSIONS,
+  ROLE_PRESETS,
+  hasPermission,
+  isSuperAdmin,
+  getRoleBadgeClass,
+  canAccessCourse,
+} from '@/lib/permissions';
 import {
   Users,
   Search,
@@ -34,14 +43,6 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-const ALL_PERMISSIONS = [
-  { id: 'manage_questions', label: 'Manage & Add Questions', desc: 'Create, edit, and curate topic question bank' },
-  { id: 'manage_courses', label: 'Manage Courses', desc: 'Create and update course subjects and marking schemes' },
-  { id: 'manage_mock_tests', label: 'Manage Mock Tests', desc: 'Create and schedule mock tests' },
-  { id: 'manage_users', label: 'Manage Users & Admins', desc: 'Onboard students and assign admin roles' },
-  { id: 'view_audit_logs', label: 'View Audit Logs', desc: 'Access platform security logs and actions' },
-];
-
 export default function UserManagementPage() {
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students');
 
@@ -70,14 +71,8 @@ export default function UserManagementPage() {
       .catch(() => {});
   }, []);
 
-  const isMasterController = Boolean(
-    currentAdmin &&
-      (currentAdmin.adminId === 'admin_master_1' ||
-        currentAdmin.id === 'admin_master_1' ||
-        currentAdmin.role === 'Super Admin' ||
-        currentAdmin.email === 'admin' ||
-        currentAdmin.name === 'Master Controller')
-  );
+  const isMasterController = isSuperAdmin(currentAdmin);
+  const canManageAdmins = isSuperAdmin(currentAdmin) || hasPermission(currentAdmin, 'manage_admins');
 
   // Student State
   const initialCache = getAdminSwrCache<{ users?: any[]; admins?: any[]; courses?: any[] }>('admin_users_cache');
@@ -436,33 +431,48 @@ export default function UserManagementPage() {
 
   const handleRolePreset = (selectedRole: string) => {
     setAdminRole(selectedRole);
-    if (selectedRole === 'Super Admin') {
-      setAdminPermissions(['manage_questions', 'manage_courses', 'manage_mock_tests', 'manage_users', 'view_audit_logs']);
-      setAdminAllowedCourses(['all']);
-    } else if (selectedRole === 'Question Contributor') {
-      setAdminPermissions(['manage_questions']);
-      if (adminAllowedCourses.length === 0 || adminAllowedCourses.includes('all')) {
-        setAdminAllowedCourses(courses.length > 0 ? [courses[0]._id] : ['all']);
+    const preset = ROLE_PRESETS[selectedRole];
+    if (preset) {
+      if (selectedRole === 'Super Admin') {
+        setAdminPermissions([...ROLE_PRESETS['Super Admin'].permissions]);
+        setAdminAllowedCourses(['all']);
+      } else {
+        setAdminPermissions([...preset.permissions]);
+        if (preset.defaultCourseScope === 'all') {
+          setAdminAllowedCourses(['all']);
+        } else {
+          if (adminAllowedCourses.length === 0 || adminAllowedCourses.includes('all')) {
+            setAdminAllowedCourses(courses.length > 0 ? [String(courses[0]._id || courses[0].id)] : ['all']);
+          }
+        }
       }
-    } else if (selectedRole === 'Course Manager') {
-      setAdminPermissions(['manage_courses', 'manage_questions']);
-      setAdminAllowedCourses(['all']);
-    } else if (selectedRole === 'Exam Controller') {
-      setAdminPermissions(['manage_mock_tests', 'manage_questions']);
-      setAdminAllowedCourses(['all']);
     }
   };
 
   const togglePermission = (permId: string) => {
-    setAdminPermissions((prev) =>
-      prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId]
-    );
+    setAdminPermissions((prev) => {
+      const next = prev.includes(permId) ? prev.filter((p) => p !== permId) : [...prev, permId];
+      // Check if matches any preset exactly
+      let matchedRole = 'Custom';
+      for (const [rName, rObj] of Object.entries(ROLE_PRESETS)) {
+        if (rName === 'Custom' || rName === 'Super Admin') continue;
+        if (
+          rObj.permissions.length === next.length &&
+          rObj.permissions.every((x) => next.includes(x))
+        ) {
+          matchedRole = rName;
+          break;
+        }
+      }
+      setAdminRole(matchedRole);
+      return next;
+    });
   };
 
   const toggleCoursePermission = (courseId: string) => {
     if (courseId === 'all') {
       if (adminAllowedCourses.includes('all')) {
-        setAdminAllowedCourses(courses.length > 0 ? [courses[0]._id] : []);
+        setAdminAllowedCourses(courses.length > 0 ? [String(courses[0]._id || courses[0].id)] : []);
       } else {
         setAdminAllowedCourses(['all']);
       }
@@ -471,10 +481,12 @@ export default function UserManagementPage() {
 
     setAdminAllowedCourses((prev) => {
       const filtered = prev.filter((c) => c !== 'all');
-      if (filtered.includes(courseId)) {
-        return filtered.filter((c) => c !== courseId);
+      const targetCid = String(courseId);
+      if (filtered.some((c) => String(c) === targetCid)) {
+        const next = filtered.filter((c) => String(c) !== targetCid);
+        return next.length === 0 ? (courses.length > 0 ? [String(courses[0]._id || courses[0].id)] : ['all']) : next;
       } else {
-        return [...filtered, courseId];
+        return [...filtered, targetCid];
       }
     });
   };
@@ -485,8 +497,8 @@ export default function UserManagementPage() {
     setAdminEmail('');
     setAdminPassword('');
     setAdminRole('Question Contributor');
-    setAdminPermissions(['manage_questions']);
-    setAdminAllowedCourses(courses.length > 0 ? [courses[0]._id] : ['all']);
+    setAdminPermissions([...ROLE_PRESETS['Question Contributor'].permissions]);
+    setAdminAllowedCourses(courses.length > 0 ? [String(courses[0]._id || courses[0].id)] : ['all']);
     setAdminError('');
     setShowAddAdminModal(true);
   };
@@ -496,14 +508,18 @@ export default function UserManagementPage() {
     setAdminName(admin.name || '');
     setAdminEmail(admin.email || '');
     setAdminPassword('');
-    setAdminRole(admin.role || 'Question Contributor');
+    const isSuper = admin.role === 'Super Admin' || (admin.permissions && admin.permissions.includes('all'));
+    setAdminRole(isSuper ? 'Super Admin' : (admin.role || 'Question Contributor'));
     setAdminPermissions(
-      admin.permissions ||
-        (admin.role === 'Super Admin'
-          ? ['manage_questions', 'manage_courses', 'manage_mock_tests', 'manage_users', 'view_audit_logs']
-          : ['manage_questions'])
+      isSuper
+        ? [...ROLE_PRESETS['Super Admin'].permissions]
+        : (admin.permissions && admin.permissions.length > 0 ? [...admin.permissions] : ['manage_questions'])
     );
-    setAdminAllowedCourses(admin.allowed_courses || ['all']);
+    setAdminAllowedCourses(
+      isSuper
+        ? ['all']
+        : (admin.allowed_courses && admin.allowed_courses.length > 0 ? [...admin.allowed_courses] : ['all'])
+    );
     setAdminError('');
     setShowAddAdminModal(true);
   };
@@ -611,16 +627,20 @@ export default function UserManagementPage() {
     setAdminError('');
     setSubmitting(true);
 
+    const isSuper = adminRole === 'Super Admin';
+    const finalPermissions = isSuper ? ROLE_PRESETS['Super Admin'].permissions : adminPermissions;
+    const finalCourses = isSuper ? ['all'] : adminAllowedCourses;
+
     try {
       if (editingAdmin) {
-        const res = await fetch(`/api/admins/${editingAdmin._id}`, {
+        const res = await fetch(`/api/admins/${editingAdmin._id || editingAdmin.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: adminName,
             role: adminRole,
-            permissions: adminPermissions,
-            allowed_courses: adminAllowedCourses,
+            permissions: finalPermissions,
+            allowed_courses: finalCourses,
             password: adminPassword || undefined,
           }),
         });
@@ -644,8 +664,8 @@ export default function UserManagementPage() {
             email: adminEmail,
             password: adminPassword,
             role: adminRole,
-            permissions: adminPermissions,
-            allowed_courses: adminAllowedCourses,
+            permissions: finalPermissions,
+            allowed_courses: finalCourses,
           }),
         });
 
@@ -790,39 +810,42 @@ export default function UserManagementPage() {
   const masterAdminRecord = admins.find((a) => a._id === 'admin_master_1' || a.role === 'Super Admin');
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
-      <AdminSidebar />
+    <AdminAccessGuard permission="manage_users" permissions={['manage_admins']} pageTitle="User & Admin Management">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+        <AdminSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader
-          title="User & Admin Management"
-          subtitle="Manage student accounts, credentials, and configure administrative RBAC personnel (FR-36, FR-37)"
-        />
+        <div className="flex-1 flex flex-col min-w-0">
+          <AdminHeader
+            title="User & Admin Management"
+            subtitle="Manage student accounts, credentials, and configure administrative RBAC personnel (FR-36, FR-37)"
+          />
 
-        <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
-          {/* Category Tabs */}
-          <div className="flex border-b border-slate-200 dark:border-slate-800">
-            <button
-              onClick={() => setActiveTab('students')}
-              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
-                activeTab === 'students'
-                  ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Users className="w-4 h-4" /> Student Accounts
-            </button>
-            <button
-              onClick={() => setActiveTab('admins')}
-              className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
-                activeTab === 'admins'
-                  ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" /> Administrative Personnel
-            </button>
-          </div>
+          <main className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 overflow-y-auto">
+            {/* Category Tabs */}
+            <div className="flex border-b border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setActiveTab('students')}
+                className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'students'
+                    ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Users className="w-4 h-4" /> Student Accounts
+              </button>
+              {canManageAdmins && (
+                <button
+                  onClick={() => setActiveTab('admins')}
+                  className={`pb-3 px-5 text-xs font-extrabold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                    activeTab === 'admins'
+                      ? 'border-brand-800 text-brand-800 dark:border-brand-500 dark:text-brand-400'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4" /> Administrative Personnel
+                </button>
+              )}
+            </div>
 
           {/* STUDENTS TAB CONTENT */}
           {activeTab === 'students' && (
@@ -1333,24 +1356,25 @@ export default function UserManagementPage() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       {admins.map((a) => {
                         const isSuper = a.role === 'Super Admin' || (a.permissions && a.permissions.includes('all'));
-                        const isMasterRow = a._id === 'admin_master_1' || a.email === 'admin';
+                        const isMasterRow = a._id === 'admin_master_1' || a.id === 'admin_master_1' || a.email === 'admin';
                         const aPass = a.raw_password || (isMasterRow ? 'Admin@123456' : '');
                         const isPassRevealed = !!revealedPasswords[a._id];
 
-                        const allowedCourseNames = (a.allowed_courses || []).includes('all')
+                        const isUnrestricted = (a.allowed_courses || []).includes('all') || isSuper;
+                        const allowedCourseNames = isUnrestricted
                           ? 'All Courses (Unrestricted)'
                           : (a.allowed_courses || [])
-                              .map((cid: string) => courses.find((c) => c._id === cid)?.name || cid)
+                              .map((cid: string) => courses.find((c) => String(c._id || c.id) === String(cid))?.name || cid)
                               .join(', ');
 
                         return (
-                          <tr key={a._id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                          <tr key={a._id || a.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
                             <td className="p-4 font-semibold text-slate-900 dark:text-white">
                               <div className="flex items-center gap-2">
                                 {isSuper ? (
                                   <Crown className="w-4 h-4 text-amber-500 shrink-0" />
                                 ) : (
-                                  <Shield className="w-4 h-4 text-brand-700 dark:text-brand-400 shrink-0" />
+                                  <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                                 )}
                                 <div>
                                   <div className="flex items-center gap-1.5">
@@ -1406,13 +1430,9 @@ export default function UserManagementPage() {
 
                             <td className="p-4">
                               <span
-                                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
-                                  isSuper
-                                    ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800'
-                                    : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
-                                }`}
+                                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${getRoleBadgeClass(a.role)}`}
                               >
-                                {a.role || 'Super Admin'}
+                                {a.role || 'Question Contributor'}
                               </span>
                             </td>
 
@@ -1428,7 +1448,7 @@ export default function UserManagementPage() {
                             <td className="p-4">
                               <div className="flex flex-wrap gap-1">
                                 {isSuper ? (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
                                     Full Platform Access
                                   </span>
                                 ) : (a.permissions || []).length === 0 ? (
@@ -1462,19 +1482,23 @@ export default function UserManagementPage() {
                                 )
                               ) : (
                                 <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => openEditAdminModal(a)}
-                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-md flex items-center gap-1 transition-colors cursor-pointer"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5" /> Edit Access
-                                  </button>
-                                  <button
-                                    onClick={() => setActiveActionModal({ entity: a, targetType: 'admin', type: 'delete' })}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
-                                    title="Remove Admin Account"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  {canManageAdmins && (
+                                    <>
+                                      <button
+                                        onClick={() => openEditAdminModal(a)}
+                                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" /> Edit Access
+                                      </button>
+                                      <button
+                                        onClick={() => setActiveActionModal({ entity: a, targetType: 'admin', type: 'delete' })}
+                                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                                        title="Remove Admin Account"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               )}
                             </td>
@@ -1851,55 +1875,63 @@ export default function UserManagementPage() {
                 <select
                   value={adminRole}
                   onChange={(e) => handleRolePreset(e.target.value)}
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium text-xs focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="Question Contributor">Question Contributor (Question Bank for Specific Courses)</option>
-                  <option value="Super Admin">Super Admin (Full Unrestricted Platform Control)</option>
-                  <option value="Course Manager">Course Manager (Curriculum & Questions)</option>
+                  <option value="Question Contributor">Question Contributor (Question Bank Curators)</option>
                   <option value="Exam Controller">Exam Controller (Mock Tests & Scoring)</option>
+                  <option value="Course Manager">Course Manager (Curriculum & Study Materials)</option>
+                  <option value="Student & User Manager">Student & User Manager (Support Personnel)</option>
+                  <option value="Super Admin">Super Admin (Full Unrestricted Platform Control)</option>
                   <option value="Custom">Custom Role (Manual Permission & Scope Configuration)</option>
                 </select>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  {ROLE_PRESETS[adminRole]?.description || 'Custom configured administrative access permissions and course tracks.'}
+                </p>
               </div>
 
               {/* Course Assignment Scope */}
               {adminRole !== 'Super Admin' && (
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg space-y-2">
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2.5">
                   <div className="flex justify-between items-center">
                     <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                       <BookOpen className="w-4 h-4 text-brand-700 dark:text-brand-400" />
-                      Assigned Course Responsibilities
+                      Assigned Course Track Responsibilities
                     </label>
-                    <span className="text-[11px] text-slate-500">Restricts question bank & test edits</span>
+                    <span className="text-[10px] text-slate-500">Restricts question bank & test edits</span>
                   </div>
 
                   <div className="space-y-1.5 pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700/50">
+                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
                       <input
                         type="checkbox"
                         checked={adminAllowedCourses.includes('all')}
                         onChange={() => toggleCoursePermission('all')}
                         className="rounded border-slate-300 text-brand-800 focus:ring-brand-500"
                       />
-                      <span className="font-semibold text-slate-900 dark:text-white">All Courses (Unrestricted Scope)</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-xs">All Courses (Unrestricted Scope)</span>
                     </label>
 
                     {!adminAllowedCourses.includes('all') && (
-                      <div className="pl-6 space-y-1">
+                      <div className="pl-6 space-y-1 max-h-40 overflow-y-auto pr-1">
                         {courses.length === 0 ? (
-                          <div className="text-slate-400 italic">No courses found in database</div>
+                          <div className="text-slate-400 italic text-[11px]">No courses found in database</div>
                         ) : (
-                          courses.map((c) => (
-                            <label key={c._id} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700/50">
-                              <input
-                                type="checkbox"
-                                checked={adminAllowedCourses.includes(c._id)}
-                                onChange={() => toggleCoursePermission(c._id)}
-                                className="rounded border-slate-300 text-brand-800 focus:ring-brand-500"
-                              />
-                              <span className="text-slate-800 dark:text-slate-200 font-medium">{c.name}</span>
-                              <span className="text-[10px] text-slate-400">({c.description?.slice(0, 40)}...)</span>
-                            </label>
-                          ))
+                          courses.map((c) => {
+                            const cid = String(c._id || c.id);
+                            const isChecked = adminAllowedCourses.some((ac: string) => String(ac) === cid);
+                            return (
+                              <label key={cid} className="flex items-center gap-2 cursor-pointer p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleCoursePermission(cid)}
+                                  className="rounded border-slate-300 text-brand-800 focus:ring-brand-500"
+                                />
+                                <span className="text-slate-800 dark:text-slate-200 font-medium text-xs">{c.name}</span>
+                                {c.description && <span className="text-[10px] text-slate-400 truncate max-w-[150px]">({c.description})</span>}
+                              </label>
+                            );
+                          })
                         )}
                       </div>
                     )}
@@ -1909,26 +1941,29 @@ export default function UserManagementPage() {
 
               {/* Action Permissions */}
               {adminRole !== 'Super Admin' && (
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg space-y-2">
-                  <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <Key className="w-4 h-4 text-brand-700 dark:text-brand-400" />
-                    Specific Action Permissions
-                  </label>
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <label className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Key className="w-4 h-4 text-brand-700 dark:text-brand-400" />
+                      Specific Action Permissions
+                    </label>
+                    <span className="text-[10px] text-slate-500">{adminPermissions.length} granted</span>
+                  </div>
 
-                  <div className="grid grid-cols-1 gap-2 pt-1">
+                  <div className="grid grid-cols-1 gap-2 pt-1 max-h-56 overflow-y-auto pr-1">
                     {ALL_PERMISSIONS.map((perm) => {
                       const isChecked = adminPermissions.includes(perm.id);
                       return (
-                        <label key={perm.id} className="flex items-start gap-2.5 cursor-pointer p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
+                        <label key={perm.id} className={`flex items-start gap-2.5 cursor-pointer p-2 rounded-lg border transition-colors ${isChecked ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/70' : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-700/40'}`}>
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => togglePermission(perm.id)}
-                            className="mt-0.5 rounded border-slate-300 text-brand-800 focus:ring-brand-500"
+                            className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           />
-                          <div>
-                            <div className="font-semibold text-slate-900 dark:text-white">{perm.label}</div>
-                            <div className="text-[10px] text-slate-500">{perm.desc}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 dark:text-white text-xs">{perm.label}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">{perm.desc}</div>
                           </div>
                         </label>
                       );
@@ -2351,6 +2386,7 @@ export default function UserManagementPage() {
           onClose={() => setSelectedStatsStudentId(null)}
         />
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }

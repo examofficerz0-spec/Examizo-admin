@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
+import { canAccessCourse, isSuperAdmin } from '@/lib/permissions';
 import {
   FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
   BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3
@@ -18,6 +20,19 @@ export default function MockTestManagementPage() {
   const [courses, setCourses] = useState<any[]>(initialCache?.courses || []);
   const [questions, setQuestions] = useState<any[]>(initialCache?.questions || []);
   const [loading, setLoading] = useState(!initialCache);
+  const [currentAdmin, setCurrentAdmin] = useState<any>(null);
+
+  useEffect(() => {
+    try {
+      const match = document.cookie.match(/admin_token=([^;]+)/);
+      if (match) {
+        const payloadBase64 = match[1].split('.')[1];
+        if (payloadBase64) {
+          setCurrentAdmin(JSON.parse(atob(payloadBase64)));
+        }
+      }
+    } catch (_) {}
+  }, []);
 
   // Mock Test Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -68,6 +83,17 @@ export default function MockTestManagementPage() {
       setLoading(true);
     }
     try {
+      let adminInfo = currentAdmin;
+      if (!adminInfo) {
+        try {
+          const match = document.cookie.match(/admin_token=([^;]+)/);
+          if (match) {
+            const payloadBase64 = match[1].split('.')[1];
+            if (payloadBase64) adminInfo = JSON.parse(atob(payloadBase64));
+          }
+        } catch (_) {}
+      }
+
       const [tRes, cRes, qRes, dppRes, pRes] = await Promise.all([
         fetch('/api/mock-tests', { cache: 'no-store' }),
         fetch('/api/courses', { cache: 'no-store' }),
@@ -81,30 +107,37 @@ export default function MockTestManagementPage() {
       const dppData = await dppRes.json();
       const pData = await pRes.json();
 
+      let loadedCourses = cData.courses || [];
+      if (adminInfo && adminInfo.allowed_courses && !adminInfo.allowed_courses.includes('all') && !isSuperAdmin(adminInfo)) {
+        loadedCourses = loadedCourses.filter((c: any) =>
+          adminInfo.allowed_courses.some((ac: string) => String(ac) === String(c._id || c.id))
+        );
+      }
+
       const newTests = tData.tests || [];
-      const newCourses = cData.courses || [];
       const newQuestions = qData.questions || [];
       const newDpps = dppData.weeklyDpps || [];
       const newPresets = pData.presets || [];
 
       setTests(newTests);
-      setCourses(newCourses);
+      setCourses(loadedCourses);
       setQuestions(newQuestions);
       setWeeklyDpps(newDpps);
       setPresets(newPresets);
 
       setAdminSwrCache('admin_mock_tests_cache', {
         tests: newTests,
-        courses: newCourses,
+        courses: loadedCourses,
         questions: newQuestions,
         weeklyDpps: newDpps,
         presets: newPresets,
       });
 
-      if (cData.courses?.length > 0) {
-        setCourseId(cData.courses[0]._id);
-        setDppCourseId(cData.courses[0]._id);
-        setPresetCourseId(cData.courses[0]._id);
+      if (loadedCourses.length > 0) {
+        const firstCid = String(loadedCourses[0]._id || loadedCourses[0].id);
+        setCourseId((prev) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstCid));
+        setDppCourseId((prev) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstCid));
+        setPresetCourseId((prev) => (prev && loadedCourses.some((c: any) => String(c._id || c.id) === String(prev)) ? prev : firstCid));
       }
     } catch (err) {
       console.error(err);
@@ -639,7 +672,8 @@ export default function MockTestManagementPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <AdminAccessGuard permission="manage_mock_tests" pageTitle="Mock Tests & DPP">
+      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -1800,6 +1834,7 @@ export default function MockTestManagementPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminAccessGuard>
   );
 }
