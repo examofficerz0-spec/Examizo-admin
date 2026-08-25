@@ -78,6 +78,19 @@ export async function GET(req: Request) {
 
           const effectiveRawPass = isGoogle ? null : (u.raw_password || sharedMatch?.raw_password || null);
 
+          let digiProfile: any = null;
+          if (u.digilocker_profile_json) {
+            try {
+              digiProfile = typeof u.digilocker_profile_json === 'string' ? JSON.parse(u.digilocker_profile_json) : u.digilocker_profile_json;
+            } catch (e) {}
+          } else if (sharedMatch?.digilocker_profile_json) {
+            try {
+              digiProfile = typeof sharedMatch.digilocker_profile_json === 'string' ? JSON.parse(sharedMatch.digilocker_profile_json) : sharedMatch.digilocker_profile_json;
+            } catch (e) {}
+          }
+
+          const isDigiVerified = Boolean(u.digilocker_verified || sharedMatch?.digilocker_verified || digiProfile?.verified);
+
           return {
             _id: u.id,
             id: u.id,
@@ -89,6 +102,8 @@ export async function GET(req: Request) {
             xp_total: u.xp_total || 0,
             created_at: u.created_at || new Date().toISOString(),
             locked_course_id: courseObj,
+            digilocker_verified: isDigiVerified,
+            digilockerProfile: digiProfile,
           };
         });
 
@@ -139,8 +154,17 @@ export async function GET(req: Request) {
         (!u.raw_password && !u.password && typeof u.email === 'string' && (u.email.includes('@gmail.com') || u.email.includes('@googlemail.com')))
       );
 
+      let digiProfile: any = null;
+      if (u.digilocker_profile_json) {
+        try {
+          digiProfile = typeof u.digilocker_profile_json === 'string' ? JSON.parse(u.digilocker_profile_json) : u.digilocker_profile_json;
+        } catch (e) {}
+      }
+
+      const isDigiVerified = Boolean(u.digilocker_verified || digiProfile?.verified);
+
       return {
-        _id: u._id || u.id,
+        _id: u.id || u._id,
         id: u.id || u._id,
         name: u.name,
         email: u.email,
@@ -150,6 +174,8 @@ export async function GET(req: Request) {
         xp_total: u.xp_total || 0,
         created_at: u.created_at || new Date().toISOString(),
         locked_course_id: courseObj,
+        digilocker_verified: isDigiVerified,
+        digilockerProfile: digiProfile,
       };
     });
 

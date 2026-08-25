@@ -967,6 +967,7 @@ export default function UserManagementPage() {
                     <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
                       <tr>
                         <th className="p-4">Student</th>
+                        <th className="p-4">DigiLocker KYC</th>
                         {isMasterController && <th className="p-4">Login & Password Credential</th>}
                         <th className="p-4">Locked Course</th>
                         <th className="p-4">XP Total</th>
@@ -1012,6 +1013,38 @@ export default function UserManagementPage() {
                                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
                                     </button>
                                   </div>
+                                )}
+                              </td>
+
+                              {/* DigiLocker KYC Verification Badge & Details */}
+                              <td className="p-4">
+                                {u.digilocker_verified ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-700 shadow-2xs">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> VERIFIED ✓
+                                    </span>
+                                    {u.digilockerProfile && (
+                                      <div className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
+                                        <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                                          {u.digilockerProfile.name || u.name}
+                                          {u.digilockerProfile.age !== null && u.digilockerProfile.age !== undefined && (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-black ml-1">
+                                              ({u.digilockerProfile.age} yrs)
+                                            </span>
+                                          )}
+                                        </span>
+                                        {u.digilockerProfile.maskedAadhaar && (
+                                          <span className="font-mono text-[10px] text-slate-500 block">
+                                            {u.digilockerProfile.maskedAadhaar}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+                                    <Lock className="w-2.5 h-2.5" /> Pending
+                                  </span>
                                 )}
                               </td>
 
@@ -1155,7 +1188,7 @@ export default function UserManagementPage() {
                             {/* Collapsible Sub-Profiles Row */}
                             {hasSubProfiles && isExpanded && (
                               <tr className="bg-purple-50/30 dark:bg-purple-950/20 border-y border-purple-100 dark:border-purple-900/40">
-                                <td colSpan={isMasterController ? 6 : 5} className="p-3 pl-8">
+                                <td colSpan={isMasterController ? 7 : 6} className="p-3 pl-8">
                                   <div className="space-y-2">
                                     <div className="text-[11px] font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1.5 uppercase tracking-wider">
                                       <Users className="w-3.5 h-3.5 text-purple-600" />

@@ -184,6 +184,19 @@
       "locked_course_id": null,
       "created_at": "2026-08-19T13:34:53.577Z",
       "raw_password": "123456"
+    },
+    {
+      "_id": "gt7j46snmmt8f7qd0",
+      "id": "gt7j46snmmt8f7qd0",
+      "name": "Dony Banks",
+      "email": "donybanks02@gmail.com",
+      "password_hash": "$2a$10$sEZZLaLMEJPD1jKjrfCB.e7MwP9WSbyxGLFUQQZFtYm3PyaOMJ/0y",
+      "auth_provider": "google",
+      "status": "Active",
+      "xp_total": 0,
+      "locked_course_id": "a2dmfatfwmszyy4et",
+      "created_at": "2026-08-25T08:46:22.488Z",
+      "raw_password": "123456"
     }
   ],
   "courses": [
