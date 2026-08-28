@@ -94,7 +94,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
 
         {/* Company Logo in Header - ONLY VISIBLE ON MOBILE / SMALL SCREENS (< lg) */}
         <div className="lg:hidden">
-          <Logo size={32} className="pl-1" />
+          <Logo size={40} className="pl-1" />
         </div>
       </div>
 

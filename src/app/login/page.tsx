@@ -69,7 +69,7 @@ export default function AdminLoginPage() {
           <div className="w-full max-w-md mx-auto space-y-8 my-auto">
             {/* Company Logo Header */}
             <div>
-              <Logo size={42} className="mb-8" />
+              <Logo size={48} className="mb-8" />
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                 Welcome Back
               </h1>
