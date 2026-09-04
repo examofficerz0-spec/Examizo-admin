@@ -4,8 +4,28 @@ import { queryD1, executeD1 } from '@/lib/d1';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+let galleryTableChecked = false;
+async function ensureGalleryTable() {
+  if (galleryTableChecked) return;
+  galleryTableChecked = true;
+  await executeD1(`
+    CREATE TABLE IF NOT EXISTS gallery (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      image_url TEXT NOT NULL,
+      category TEXT DEFAULT 'General',
+      display_order INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `).catch(() => {});
+}
+
 export async function GET() {
   try {
+    await ensureGalleryTable();
     const gallery = await queryD1(
       'SELECT * FROM gallery ORDER BY display_order ASC, created_at DESC'
     );
@@ -18,6 +38,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await ensureGalleryTable();
     const body = await req.json();
     const { title, description, image_url, category, display_order, is_active } = body;
 
