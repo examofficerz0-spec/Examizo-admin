@@ -1320,86 +1320,195 @@ export default function QuestionManagementPage() {
       const wb = new ExcelJS.Workbook();
       wb.creator = 'Examizo Admin Portal';
       wb.created = new Date();
+
+      // ─── SHEET 1: QUESTIONS DATA ENTRY ───
       const ws = wb.addWorksheet('Questions');
 
+      // Generous, comfortable column widths (no more squished text!)
       ws.columns = [
-        { header: 'Subject', key: 'subject', width: 16 },
-        { header: 'Topic', key: 'topic', width: 24 },
-        { header: 'Question', key: 'question', width: 50 },
-        { header: 'Image URL', key: 'image', width: 30 },
-        { header: 'Option A', key: 'optA', width: 26 },
-        { header: 'Option B', key: 'optB', width: 26 },
-        { header: 'Option C', key: 'optC', width: 26 },
-        { header: 'Option D', key: 'optD', width: 26 },
-        { header: 'Answer', key: 'answer', width: 12 },
-        { header: 'Explanation', key: 'explanation', width: 45 },
-        { header: 'Detailed Explanation', key: 'detExp', width: 55 },
+        { header: 'Subject', key: 'subject', width: 22 },
+        { header: 'Topic', key: 'topic', width: 28 },
+        { header: 'Question', key: 'question', width: 68 },
+        { header: 'Image URL / Diagram', key: 'image', width: 42 },
+        { header: 'Option A', key: 'optA', width: 34 },
+        { header: 'Option B', key: 'optB', width: 34 },
+        { header: 'Option C', key: 'optC', width: 34 },
+        { header: 'Option D', key: 'optD', width: 34 },
+        { header: 'Answer', key: 'answer', width: 16 },
+        { header: 'Explanation', key: 'explanation', width: 52 },
+        { header: 'Detailed Explanation', key: 'detExp', width: 65 },
       ];
 
-      const headerRow = ws.getRow(1);
-      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0B192C' },
-      };
-      headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-      headerRow.height = 28;
-
+      // Add realistic Science -> Waves and Optics sample questions
       ws.addRow({
         subject: 'Science',
         topic: 'Waves and Optics',
-        question: 'In the given ray diagram, what type of image is formed by the convex lens when the object is at 2F?',
-        image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
-        optA: 'Real, inverted, and same size',
+        question: 'In the ray diagram for a convex lens, where is the image formed when the object is placed at 2F?',
+        image: '[Paste diagram image directly in this cell or type URL]',
+        optA: 'Real, inverted, and same size at 2F',
         optB: 'Virtual, erect, and magnified',
-        optC: 'Real, inverted, and diminished',
+        optC: 'Real, inverted, and diminished at F',
         optD: 'Virtual, erect, and diminished',
         answer: 'A',
-        explanation: 'When an object is placed at 2F of a convex lens, a real, inverted image of the same size is formed at 2F on the other side.',
-        detExp: 'Step 1: Object position = 2F1.\nStep 2: Ray parallel to principal axis passes through F2.\nStep 3: Ray through optical centre passes undeviated.\nStep 4: Intersection occurs at 2F2 with magnification m = -1.'
+        explanation: 'When an object is placed at 2F of a convex lens, a real, inverted image of the same size forms at 2F on the opposite side.',
+        detExp: 'Step 1: Object position u = -2f.\nStep 2: Lens formula 1/f = 1/v - 1/u gives v = +2f.\nStep 3: Magnification m = v/u = -1 (real, inverted, equal size).'
       });
 
       ws.addRow({
         subject: 'Science',
         topic: 'Waves and Optics',
-        question: 'Which optical phenomenon is responsible for the splitting of white light into spectrum colors through a prism?',
-        image: '[Paste diagram image directly into this cell or leave URL]',
-        optA: 'Dispersion',
-        optB: 'Total Internal Reflection',
-        optC: 'Diffraction',
-        optD: 'Polarization',
+        question: 'Which phenomenon demonstrates the transverse wave nature of light waves?',
+        image: '',
+        optA: 'Polarization',
+        optB: 'Diffraction',
+        optC: 'Interference',
+        optD: 'Refraction',
         answer: 'A',
-        explanation: 'Dispersion is the phenomenon of splitting white light into its constituent wavelengths.',
-        detExp: 'Step 1: Different wavelengths of light travel with different velocities in glass.\nStep 2: Violet bends the most and red bends the least, separating into VIBGYOR.'
+        explanation: 'Only transverse waves can be polarized; longitudinal waves (like sound waves) cannot be polarized.',
+        detExp: 'Step 1: Polarization restricts light vibrations to a single plane perpendicular to propagation.\nStep 2: Since longitudinal oscillations are parallel to propagation, they cannot be polarized.\nStep 3: Hence, polarization proves light is a transverse wave.'
       });
 
       ws.addRow({
-        subject: 'Physics',
-        topic: 'Electrostatics',
-        question: 'What is the SI unit of electric charge?',
-        image: '',
-        optA: 'Coulomb',
-        optB: 'Ampere',
-        optC: 'Volt',
-        optD: 'Ohm',
+        subject: 'Science',
+        topic: 'Waves and Optics',
+        question: 'When white light passes through a glass triangular prism, which color of light bends the most?',
+        image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
+        optA: 'Violet',
+        optB: 'Red',
+        optC: 'Yellow',
+        optD: 'Green',
         answer: 'A',
-        explanation: 'Electric charge is measured in Coulombs (C).',
-        detExp: 'Step 1: Electric charge is a fundamental property of matter.\nStep 2: SI unit of electric charge is Coulomb (C), named after Charles-Augustin de Coulomb.\nStep 3: 1 C = 1 A * 1 s.'
+        explanation: 'Violet light has the shortest wavelength and highest refractive index in glass, so it deviates the most.',
+        detExp: 'Step 1: Refractive index n is inversely proportional to wavelength (Cauchy formula).\nStep 2: Violet has the shortest wavelength in visible spectrum (~400 nm), hence largest refractive index.\nStep 3: Angle of deviation delta = (n - 1)A is maximum for violet.'
       });
 
       ws.addRow({
-        subject: 'Chemistry',
-        topic: 'Periodic Table',
-        question: 'Which element belongs to the alkali metal group (Group 1)?',
+        subject: 'Science',
+        topic: 'Waves and Optics',
+        question: 'What is the essential condition for Total Internal Reflection (TIR) to occur at an interface?',
         image: '',
-        optA: 'Sodium (Na)',
-        optB: 'Magnesium (Mg)',
-        optC: 'Aluminium (Al)',
-        optD: 'Chlorine (Cl)',
+        optA: 'Light travels from denser to rarer medium and angle of incidence > critical angle',
+        optB: 'Light travels from rarer to denser medium and angle of incidence > critical angle',
+        optC: 'Angle of incidence is exactly 0 degrees',
+        optD: 'Angle of refraction is exactly 0 degrees',
         answer: 'A',
-        explanation: 'Sodium is a Group 1 element, also known as an alkali metal.',
-        detExp: 'Step 1: Group 1 elements are known as alkali metals.\nStep 2: Sodium (Na) has electronic configuration 2, 8, 1 with 1 valence electron.\nStep 3: Therefore, Sodium belongs to the alkali metal group.'
+        explanation: 'TIR occurs only when light travels from an optically denser medium to a rarer medium and the angle of incidence exceeds the critical angle.',
+        detExp: 'Step 1: Ray must attempt to pass from denser (n1) to rarer (n2) medium.\nStep 2: By Snell\'s Law, n1 * sin(i) = n2 * sin(r).\nStep 3: When i > critical angle (ic = arcsin(n2/n1)), sin(r) > 1 which is impossible, resulting in total reflection.'
+      });
+
+      // Apply complete styling, borders, word-wrapping, and color tints to each row & cell
+      ws.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) {
+          row.height = 36;
+          row.eachCell((cell) => {
+            cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF0B192C' },
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = {
+              top: { style: 'medium', color: { argb: 'FF0B192C' } },
+              bottom: { style: 'medium', color: { argb: 'FF0B192C' } },
+              left: { style: 'thin', color: { argb: 'FF1E293B' } },
+              right: { style: 'thin', color: { argb: 'FF1E293B' } },
+            };
+          });
+        } else {
+          row.height = 58; // Generous height for multiple lines of question text or images
+          const isEven = rowNumber % 2 === 0;
+
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF1E293B' } };
+            cell.alignment = {
+              vertical: 'middle',
+              horizontal: colNumber === 9 ? 'center' : (colNumber === 4 ? 'center' : 'left'),
+              wrapText: true,
+            };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            };
+
+            // Custom column color coding
+            if (colNumber === 4) {
+              // Column D: Image / Diagram cell (Soft blue tint + indicator)
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFEFF6FF' },
+              };
+            } else if (colNumber === 9) {
+              // Column I: Correct Answer (Soft emerald tint + bold)
+              cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FF065F46' } };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFECFDF5' },
+              };
+            } else {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF8FAFC' },
+              };
+            }
+          });
+        }
+      });
+
+      // ─── SHEET 2: INSTRUCTIONS & GUIDELINES TAB ───
+      const guideWs = wb.addWorksheet('Instructions & Guide');
+      guideWs.columns = [
+        { header: 'Column / Feature', key: 'title', width: 30 },
+        { header: 'Instructions & Guidelines', key: 'desc', width: 90 },
+      ];
+
+      guideWs.getRow(1).height = 34;
+      guideWs.getRow(1).eachCell((cell) => {
+        cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      guideWs.addRow({
+        title: '1. In-Cell Diagrams (Column D)',
+        desc: 'You can directly copy & paste (or Insert -> Pictures) any image into Column D ("Image URL / Diagram"). Recommended file sizes are 50 KB to 250 KB (.png, .jpg, .webp). The parser will automatically extract and optimize them for the question bank.'
+      });
+      guideWs.addRow({
+        title: '2. External URLs (Column D)',
+        desc: 'You can also provide a public HTTPS image URL in Column D if your images are hosted on a CDN or cloud storage.'
+      });
+      guideWs.addRow({
+        title: '3. Correct Answer (Column I)',
+        desc: 'Enter the correct choice as A, B, C, or D (or 1, 2, 3, 4). The parser will automatically link it to the corresponding option.'
+      });
+      guideWs.addRow({
+        title: '4. Subject & Topic (Cols A & B)',
+        desc: 'If left empty, all questions will automatically inherit the currently selected Subject and Topic Module in your portal (e.g. Science ➔ Waves and Optics).'
+      });
+      guideWs.addRow({
+        title: '5. Detailed Explanations',
+        desc: 'Use Column K for step-by-step worked solutions. Line breaks (Alt + Enter in Excel) are fully preserved.'
+      });
+
+      guideWs.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) {
+          row.height = 42;
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF1E293B' } };
+            cell.alignment = { vertical: 'middle', wrapText: true };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            };
+          });
+        }
       });
 
       const buffer = await wb.xlsx.writeBuffer();
