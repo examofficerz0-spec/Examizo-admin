@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { useRouter } from 'next/navigation';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
@@ -574,7 +575,78 @@ export default function QuestionManagementPage() {
 
 
 
-  // Multi-Sheet Robust Excel & CSV Parser Engine
+  // Helper: Extract string from any ExcelJS or SheetJS cell value
+  const getCellValueAsString = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val).trim();
+    if (typeof val === 'object') {
+      if (Array.isArray(val.richText)) {
+        return val.richText.map((t: any) => t?.text || '').join('').trim();
+      }
+      if (val.result !== undefined && val.result !== null) {
+        return String(val.result).trim();
+      }
+      if (val.text !== undefined && val.text !== null) {
+        return String(val.text).trim();
+      }
+      if (val.hyperlink) {
+        return String(val.hyperlink).trim();
+      }
+    }
+    return String(val).trim();
+  };
+
+  // Helper: Client-side Canvas WebP Image Compressor (80-120KB -> 15-25KB)
+  const compressImageDataUrl = async (dataUrl: string, maxWidth = 900, quality = 0.82): Promise<string> => {
+    if (!dataUrl || !dataUrl.startsWith('data:image') || typeof window === 'undefined') return dataUrl;
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            let { width, height } = img;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(dataUrl);
+              return;
+            }
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            const webp = canvas.toDataURL('image/webp', quality);
+            resolve(webp && webp.length < dataUrl.length ? webp : dataUrl);
+          } catch {
+            resolve(dataUrl);
+          }
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch {
+        resolve(dataUrl);
+      }
+    });
+  };
+
+  const removeParsedQuestionImage = (index: number) => {
+    setParsedExcelQuestions((prev) => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = { ...copy[index], image_url: '' };
+      }
+      return copy;
+    });
+  };
+
+  // Multi-Sheet Robust Excel & CSV Parser Engine with In-Cell Diagram Extraction via ExcelJS
   const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -585,14 +657,7 @@ export default function QuestionManagementPage() {
 
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellText: false, WTF: false });
-
-      if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-        setExcelError('The selected spreadsheet has no readable sheets.');
-        setParsedExcelQuestions([]);
-        setExcelTotalParsed(0);
-        return;
-      }
+      const isXlsx = file.name.toLowerCase().endsWith('.xlsx');
 
       const allParsedQuestions: any[] = [];
       const sheetStats: string[] = [];
@@ -603,293 +668,557 @@ export default function QuestionManagementPage() {
         return stripped || text;
       };
 
-      for (const sheetName of workbook.SheetNames) {
-        const worksheet = workbook.Sheets[sheetName];
-        if (!worksheet) continue;
+      if (isXlsx) {
+        // ─── HIGH-PRECISION EXCELJS PARSER WITH EMBEDDED CELL DRAWING EXTRACTION ───
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(data);
 
-        // Extract 2D rows (header: 1)
-        const rawGrid: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
-        if (!rawGrid || rawGrid.length === 0) continue;
+        if (!workbook.worksheets || workbook.worksheets.length === 0) {
+          setExcelError('The selected spreadsheet has no readable sheets.');
+          setParsedExcelQuestions([]);
+          setExcelTotalParsed(0);
+          return;
+        }
 
-        // Filter non-empty rows
-        const nonEmptyRows = rawGrid.filter((r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== ''));
-        if (nonEmptyRows.length === 0) continue;
+        for (const worksheet of workbook.worksheets) {
+          const sheetName = worksheet.name || 'Sheet1';
 
-        // Auto-detect header row index (scanning first 15 rows)
-        let headerRowIdx = 0;
-        let maxHeaderScore = 0;
-        const headerKeywords = [
-          'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext',
-          'option', 'choice', 'opta', 'opt1', 'opt a', 'option a', 'option 1',
-          'answer', 'correct', 'ans', 'solution', 'explanation', 'subject', 'topic', 'chapter'
-        ];
+          // 1. Extract In-Cell Drawings / Media Images for this worksheet
+          const sheetImages = (worksheet as any).getImages ? (worksheet as any).getImages() : [];
+          // Map: Excel 1-based Row Number -> Base64 Data URL
+          const rowImageMap = new Map<number, { dataUrl: string; col: number }>();
 
-        for (let rIdx = 0; rIdx < Math.min(15, rawGrid.length); rIdx++) {
-          const row = rawGrid[rIdx];
-          if (!Array.isArray(row)) continue;
-          let score = 0;
-          row.forEach((cell) => {
-            const cellNorm = String(cell ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (headerKeywords.some((k) => cellNorm.includes(k.replace(/[^a-z0-9]/g, '')))) {
-              score += 2;
+          for (const img of sheetImages) {
+            try {
+              const imgObj = workbook.getImage(Number(img.imageId));
+              if (!imgObj || !imgObj.buffer) continue;
+              const ext = (imgObj.extension || 'png').toLowerCase();
+              const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+              
+              const bytes = new Uint8Array(imgObj.buffer as ArrayBuffer);
+              let binary = '';
+              const len = bytes.byteLength;
+              for (let b = 0; b < len; b++) {
+                binary += String.fromCharCode(bytes[b]);
+              }
+              const rawDataUrl = `data:${mime};base64,${window.btoa(binary)}`;
+
+              // OpenXML drawing anchors: tl.row is 0-indexed float, so Math.floor(tl.row) + 1 is 1-indexed Excel row
+              const tlRow = img.range?.tl?.row ?? img.range?.tl?.nativeRow ?? 0;
+              const tlCol = img.range?.tl?.col ?? img.range?.tl?.nativeCol ?? 0;
+              const excelRow = Math.floor(tlRow) + 1;
+              const excelCol = Math.floor(tlCol) + 1;
+
+              if (!rowImageMap.has(excelRow)) {
+                rowImageMap.set(excelRow, { dataUrl: rawDataUrl, col: excelCol });
+              }
+            } catch (imgErr) {
+              console.warn('[ExcelImageExtractError]', imgErr);
             }
+          }
+
+          // 2. Extract 2D Grid from ExcelJS rows
+          const rawGrid: string[][] = [];
+          worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+            const rowVals: string[] = [];
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+              while (rowVals.length < colNumber - 1) rowVals.push('');
+              rowVals[colNumber - 1] = getCellValueAsString(cell.value);
+            });
+            while (rawGrid.length < rowNumber - 1) rawGrid.push([]);
+            rawGrid[rowNumber - 1] = rowVals;
           });
-          if (score > maxHeaderScore) {
-            maxHeaderScore = score;
-            headerRowIdx = rIdx;
+
+          if (!rawGrid || rawGrid.length === 0) continue;
+
+          // Auto-detect header row index (scanning first 15 rows)
+          let headerRowIdx = 0;
+          let maxHeaderScore = 0;
+          const headerKeywords = [
+            'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext',
+            'option', 'choice', 'opta', 'opt1', 'opt a', 'option a', 'option 1',
+            'answer', 'correct', 'ans', 'solution', 'explanation', 'subject', 'topic', 'chapter', 'image', 'diagram'
+          ];
+
+          for (let rIdx = 0; rIdx < Math.min(15, rawGrid.length); rIdx++) {
+            const row = rawGrid[rIdx];
+            if (!Array.isArray(row)) continue;
+            let score = 0;
+            row.forEach((cell) => {
+              const cellNorm = String(cell ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (headerKeywords.some((k) => cellNorm.includes(k.replace(/[^a-z0-9]/g, '')))) {
+                score += 2;
+              }
+            });
+            if (score > maxHeaderScore) {
+              maxHeaderScore = score;
+              headerRowIdx = rIdx;
+            }
           }
-        }
 
-        // Build header keys from the detected header row
-        const rawHeaderRow = rawGrid[headerRowIdx] || [];
-        const colKeys: string[] = [];
-        const seenKeys = new Set<string>();
+          const rawHeaderRow = rawGrid[headerRowIdx] || [];
+          const colKeys: string[] = [];
+          const seenKeys = new Set<string>();
 
-        rawHeaderRow.forEach((h: any, cIdx: number) => {
-          let k = String(h ?? '').trim();
-          if (!k) k = `col_${cIdx}`;
-          let uniqueKey = k;
-          let counter = 1;
-          while (seenKeys.has(uniqueKey.toLowerCase())) {
-            uniqueKey = `${k}_${counter++}`;
-          }
-          seenKeys.add(uniqueKey.toLowerCase());
-          colKeys.push(uniqueKey);
-        });
-
-        // Convert data rows into objects
-        const sheetObjRows: Record<string, any>[] = [];
-        for (let rIdx = headerRowIdx + 1; rIdx < rawGrid.length; rIdx++) {
-          const row = rawGrid[rIdx];
-          if (!Array.isArray(row) || !row.some((c) => String(c ?? '').trim() !== '')) continue;
-          const rowObj: Record<string, any> = {};
-          colKeys.forEach((key, cIdx) => {
-            rowObj[key] = row[cIdx] !== undefined ? String(row[cIdx]).trim() : '';
+          rawHeaderRow.forEach((h: any, cIdx: number) => {
+            let k = String(h ?? '').trim();
+            if (!k) k = `col_${cIdx}`;
+            let uniqueKey = k;
+            let counter = 1;
+            while (seenKeys.has(uniqueKey.toLowerCase())) {
+              uniqueKey = `${k}_${counter++}`;
+            }
+            seenKeys.add(uniqueKey.toLowerCase());
+            colKeys.push(uniqueKey);
           });
-          sheetObjRows.push(rowObj);
-        }
 
-        if (sheetObjRows.length === 0) continue;
-
-        // ─── Precision Column-by-Column Resolution Engine ───
-        const normCols = colKeys.map((k) => ({
-          original: k,
-          norm: k.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        }));
-
-        const usedCols = new Set<string>();
-
-        const matchCol = (
-          exactPatterns: string[],
-          prefixPatterns: string[] = [],
-          excludeRegex?: RegExp
-        ): string | null => {
-          // 1. Exact Match Priority
-          for (const item of normCols) {
-            if (usedCols.has(item.original)) continue;
-            if (excludeRegex && excludeRegex.test(item.norm)) continue;
-            for (const p of exactPatterns) {
-              if (item.norm === p) return item.original;
-            }
-          }
-          // 2. Strict Prefix Match (must be 3+ characters to avoid single letter collisions)
-          for (const item of normCols) {
-            if (usedCols.has(item.original)) continue;
-            if (excludeRegex && excludeRegex.test(item.norm)) continue;
-            for (const p of prefixPatterns) {
-              if (p.length >= 3 && (item.norm.startsWith(p) || item.norm === p)) return item.original;
-            }
-          }
-          return null;
-        };
-
-        // 1. Subject Column
-        const subjKey = matchCol(
-          ['subject', 'subjectname', 'course', 'stream', 'discipline'],
-          ['subject']
-        );
-        if (subjKey) usedCols.add(subjKey);
-
-        // 2. Topic / Chapter Column
-        const topicKey = matchCol(
-          ['topic', 'topicname', 'chapter', 'chaptername', 'module', 'unit', 'section', 'lesson', 'subtopic'],
-          ['topic', 'chapter', 'module', 'unit']
-        );
-        if (topicKey) usedCols.add(topicKey);
-
-        // 3. Question Prompt Column
-        const qKey = matchCol(
-          ['question', 'questiontext', 'questions', 'prompt', 'problem', 'statement', 'questionstatement', 'questiondescription', 'questiontitle', 'mcq', 'qtext', 'ques', 'q_text'],
-          ['questiontext', 'question', 'problem', 'statement'],
-          /^(questionno|questionnumber|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id|_id)$/i
-        );
-        if (qKey) usedCols.add(qKey);
-
-        // 4. Option A Column (Strict Exact Patterns only — NEVER allow loose substring match)
-        const optAKey = matchCol(
-          ['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a', 'answera'],
-          ['optiona', 'opta', 'choicea', 'option1']
-        );
-        if (optAKey) usedCols.add(optAKey);
-
-        // 5. Option B Column (Strict Exact Patterns only)
-        const optBKey = matchCol(
-          ['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b', 'answerb'],
-          ['optionb', 'optb', 'choiceb', 'option2']
-        );
-        if (optBKey) usedCols.add(optBKey);
-
-        // 6. Option C Column (Strict Exact Patterns only)
-        const optCKey = matchCol(
-          ['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c', 'answerc'],
-          ['optionc', 'optc', 'choicec', 'option3']
-        );
-        if (optCKey) usedCols.add(optCKey);
-
-        // 7. Option D Column (Strict Exact Patterns only)
-        const optDKey = matchCol(
-          ['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd', 'answerd'],
-          ['optiond', 'optd', 'choiced', 'option4']
-        );
-        if (optDKey) usedCols.add(optDKey);
-
-        // 8. Correct Answer Column
-        const ansKey = matchCol(
-          ['answer', 'correctanswer', 'correctoption', 'correctopt', 'correct', 'ans', 'key', 'anskey', 'answerkey', 'rightanswer', 'solutionkey', 'correctchoice'],
-          ['correctanswer', 'correctoption', 'answer', 'anskey']
-        );
-        if (ansKey) usedCols.add(ansKey);
-
-        // 9. Detailed Explanation Column (Step by step)
-        const detExpKey = matchCol(
-          ['detailedexplanation', 'detailedsolution', 'stepbystep', 'workedout', 'workedsolution', 'detailedsol', 'detailed'],
-          ['detailedexplanation', 'detailedsolution', 'stepbystep']
-        );
-        if (detExpKey) usedCols.add(detExpKey);
-
-        // 10. General Explanation Column
-        const expKey = matchCol(
-          ['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint', 'description'],
-          ['explanation', 'solution', 'reason', 'rationale']
-        );
-        if (expKey) usedCols.add(expKey);
-
-        // 11. Image / Diagram Column
-        const imgKey = matchCol(
-          ['imageurl', 'image', 'diagramurl', 'diagram', 'questionimage', 'photo', 'picture', 'fig', 'figure', 'img'],
-          ['imageurl', 'diagramurl', 'image', 'diagram']
-        );
-        if (imgKey) usedCols.add(imgKey);
-
-        // Auto-detect question key if not found by name
-        let finalQKey = qKey;
-        if (!finalQKey) {
-          let bestKey: string | null = null;
-          let bestScore = 0;
-          for (const key of colKeys) {
-            if (usedCols.has(key)) continue;
-            const samples = sheetObjRows.slice(0, 30).map((r) => (r[key] !== undefined && r[key] !== null ? String(r[key]).trim() : '')).filter(Boolean);
-            const diversity = new Set(samples).size;
-            const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
-            const score = diversity * avgLen;
-            if (score > bestScore && avgLen >= 2) {
-              bestScore = score;
-              bestKey = key;
-            }
-          }
-          if (bestKey) finalQKey = bestKey;
-        }
-
-        let sheetParsedCount = 0;
-
-        for (const row of sheetObjRows) {
-          let qText = finalQKey && row[finalQKey] !== undefined && row[finalQKey] !== null ? String(row[finalQKey]).trim() : '';
-
-          if (!qText) {
-            let bestVal = '';
-            for (const key of colKeys) {
-              if (usedCols.has(key)) continue;
-              const val = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
-              if (val.length > bestVal.length) bestVal = val;
-            }
-            if (bestVal.length >= 2) qText = bestVal;
+          // Convert data rows into objects
+          const sheetObjRows: { rowNum: number; data: Record<string, any> }[] = [];
+          for (let rIdx = headerRowIdx + 1; rIdx < rawGrid.length; rIdx++) {
+            const row = rawGrid[rIdx];
+            if (!Array.isArray(row) || !row.some((c) => String(c ?? '').trim() !== '')) continue;
+            const rowObj: Record<string, any> = {};
+            colKeys.forEach((key, cIdx) => {
+              rowObj[key] = row[cIdx] !== undefined ? String(row[cIdx]).trim() : '';
+            });
+            sheetObjRows.push({ rowNum: rIdx + 1, data: rowObj });
           }
 
-          qText = cleanQuestionText(qText);
-          if (!qText || qText.length < 1) continue;
+          if (sheetObjRows.length === 0) continue;
 
-          let optA = optAKey && row[optAKey] !== undefined && row[optAKey] !== null ? stripOptPrefix(String(row[optAKey]).trim()) : '';
-          let optB = optBKey && row[optBKey] !== undefined && row[optBKey] !== null ? stripOptPrefix(String(row[optBKey]).trim()) : '';
-          let optC = optCKey && row[optCKey] !== undefined && row[optCKey] !== null ? stripOptPrefix(String(row[optCKey]).trim()) : '';
-          let optD = optDKey && row[optDKey] !== undefined && row[optDKey] !== null ? stripOptPrefix(String(row[optDKey]).trim()) : '';
+          // Column Resolution
+          const normCols = colKeys.map((k, colIdx) => ({
+            original: k,
+            colIdx: colIdx + 1,
+            norm: k.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          }));
 
-          const rawOpts = [optA, optB, optC, optD].filter((o) => o !== '');
-          while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
-          const cleanOpts = rawOpts.slice(0, 4);
-
-          const rawAns = ansKey && row[ansKey] !== undefined && row[ansKey] !== null ? String(row[ansKey]).trim() : '';
-          let correctIndex = 0;
-          if (rawAns !== '') {
-            const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\[\s]+/, '').replace(/[\)\]\.\,\s]+$/, '').trim();
-            if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1' || cleanAns === 'OPT A' || cleanAns === 'OPT 1') correctIndex = 0;
-            else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2' || cleanAns === 'OPT B' || cleanAns === 'OPT 2') correctIndex = 1;
-            else if (cleanAns === 'C' || cleanAns === '3' || cleanAns === 'OPTION C' || cleanAns === 'OPTION 3' || cleanAns === 'OPT C' || cleanAns === 'OPT 3') correctIndex = 2;
-            else if (cleanAns === 'D' || cleanAns === '4' || cleanAns === 'OPTION D' || cleanAns === 'OPTION 4' || cleanAns === 'OPT D' || cleanAns === 'OPT 4') correctIndex = 3;
-            else {
-              const foundIdx = cleanOpts.findIndex((o) => o.toLowerCase().trim() === rawAns.toLowerCase().trim());
-              if (foundIdx !== -1) correctIndex = foundIdx;
-              else {
-                const partialIdx = cleanOpts.findIndex((o) =>
-                  o.toLowerCase().includes(rawAns.toLowerCase().trim()) ||
-                  rawAns.toLowerCase().trim().includes(o.toLowerCase())
-                );
-                if (partialIdx !== -1) correctIndex = partialIdx;
+          const usedCols = new Set<string>();
+          const matchCol = (
+            exactPatterns: string[],
+            prefixPatterns: string[] = [],
+            excludeRegex?: RegExp
+          ): string | null => {
+            for (const item of normCols) {
+              if (usedCols.has(item.original)) continue;
+              if (excludeRegex && excludeRegex.test(item.norm)) continue;
+              for (const p of exactPatterns) {
+                if (item.norm === p) return item.original;
               }
             }
+            for (const item of normCols) {
+              if (usedCols.has(item.original)) continue;
+              if (excludeRegex && excludeRegex.test(item.norm)) continue;
+              for (const p of prefixPatterns) {
+                if (p.length >= 3 && (item.norm.startsWith(p) || item.norm === p)) return item.original;
+              }
+            }
+            return null;
+          };
+
+          const subjKey = matchCol(['subject', 'subjectname', 'course', 'stream', 'discipline'], ['subject']);
+          if (subjKey) usedCols.add(subjKey);
+
+          const topicKey = matchCol(['topic', 'topicname', 'chapter', 'chaptername', 'module', 'unit', 'section', 'lesson', 'subtopic'], ['topic', 'chapter', 'module', 'unit']);
+          if (topicKey) usedCols.add(topicKey);
+
+          const qKey = matchCol(
+            ['question', 'questiontext', 'questions', 'prompt', 'problem', 'statement', 'questionstatement', 'questiondescription', 'questiontitle', 'mcq', 'qtext', 'ques', 'q_text'],
+            ['questiontext', 'question', 'problem', 'statement'],
+            /^(questionno|questionnumber|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id|_id)$/i
+          );
+          if (qKey) usedCols.add(qKey);
+
+          const optAKey = matchCol(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a', 'answera'], ['optiona', 'opta', 'choicea', 'option1']);
+          if (optAKey) usedCols.add(optAKey);
+
+          const optBKey = matchCol(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b', 'answerb'], ['optionb', 'optb', 'choiceb', 'option2']);
+          if (optBKey) usedCols.add(optBKey);
+
+          const optCKey = matchCol(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c', 'answerc'], ['optionc', 'optc', 'choicec', 'option3']);
+          if (optCKey) usedCols.add(optCKey);
+
+          const optDKey = matchCol(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd', 'answerd'], ['optiond', 'optd', 'choiced', 'option4']);
+          if (optDKey) usedCols.add(optDKey);
+
+          const ansKey = matchCol(['answer', 'correctanswer', 'correctoption', 'correctopt', 'correct', 'ans', 'key', 'anskey', 'answerkey', 'rightanswer', 'solutionkey', 'correctchoice'], ['correctanswer', 'correctoption', 'answer', 'anskey']);
+          if (ansKey) usedCols.add(ansKey);
+
+          const detExpKey = matchCol(['detailedexplanation', 'detailedsolution', 'stepbystep', 'workedout', 'workedsolution', 'detailedsol', 'detailed'], ['detailedexplanation', 'detailedsolution', 'stepbystep']);
+          if (detExpKey) usedCols.add(detExpKey);
+
+          const expKey = matchCol(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint', 'description'], ['explanation', 'solution', 'reason', 'rationale']);
+          if (expKey) usedCols.add(expKey);
+
+          const imgKey = matchCol(['imageurl', 'image', 'diagramurl', 'diagram', 'questionimage', 'photo', 'picture', 'fig', 'figure', 'img'], ['imageurl', 'diagramurl', 'image', 'diagram']);
+          if (imgKey) usedCols.add(imgKey);
+
+          let finalQKey = qKey;
+          if (!finalQKey) {
+            let bestKey: string | null = null;
+            let bestScore = 0;
+            for (const key of colKeys) {
+              if (usedCols.has(key)) continue;
+              const samples = sheetObjRows.slice(0, 30).map((r) => (r.data[key] !== undefined && r.data[key] !== null ? String(r.data[key]).trim() : '')).filter(Boolean);
+              const diversity = new Set(samples).size;
+              const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
+              const score = diversity * avgLen;
+              if (score > bestScore && avgLen >= 2) {
+                bestScore = score;
+                bestKey = key;
+              }
+            }
+            if (bestKey) finalQKey = bestKey;
           }
 
-          const rawExp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
-          const rawDetExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
-          const qImgUrl = imgKey && row[imgKey] !== undefined && row[imgKey] !== null ? String(row[imgKey]).trim() : '';
+          let sheetParsedCount = 0;
 
-          const exp = rawExp || rawDetExp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`;
-          const detExp = rawDetExp || rawExp || '';
+          for (const item of sheetObjRows) {
+            const row = item.data;
+            const excelRowNumber = item.rowNum;
 
-          // Fallback to sheet name if no subject column exists
-          const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
-          const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
+            let qText = finalQKey && row[finalQKey] !== undefined && row[finalQKey] !== null ? String(row[finalQKey]).trim() : '';
+            if (!qText) {
+              let bestVal = '';
+              for (const key of colKeys) {
+                if (usedCols.has(key)) continue;
+                const val = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
+                if (val.length > bestVal.length) bestVal = val;
+              }
+              if (bestVal.length >= 2) qText = bestVal;
+            }
 
-          const explicitRowTopic = topicKey && row[topicKey] !== undefined && row[topicKey] !== null ? String(row[topicKey]).trim() : '';
-          let rowTopic = explicitRowTopic;
-          if (!rowTopic && qText && subjKey && row[subjKey] && String(row[subjKey]).trim() !== rowSubject) {
-            rowTopic = String(row[subjKey]).trim();
+            qText = cleanQuestionText(qText);
+            if (!qText || qText.length < 1) continue;
+
+            let optA = optAKey && row[optAKey] !== undefined && row[optAKey] !== null ? stripOptPrefix(String(row[optAKey]).trim()) : '';
+            let optB = optBKey && row[optBKey] !== undefined && row[optBKey] !== null ? stripOptPrefix(String(row[optBKey]).trim()) : '';
+            let optC = optCKey && row[optCKey] !== undefined && row[optCKey] !== null ? stripOptPrefix(String(row[optCKey]).trim()) : '';
+            let optD = optDKey && row[optDKey] !== undefined && row[optDKey] !== null ? stripOptPrefix(String(row[optDKey]).trim()) : '';
+
+            const rawOpts = [optA, optB, optC, optD].filter((o) => o !== '');
+            while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
+            const cleanOpts = rawOpts.slice(0, 4);
+
+            const rawAns = ansKey && row[ansKey] !== undefined && row[ansKey] !== null ? String(row[ansKey]).trim() : '';
+            let correctIndex = 0;
+            if (rawAns !== '') {
+              const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\[\s]+/, '').replace(/[\)\]\.\,\s]+$/, '').trim();
+              if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1' || cleanAns === 'OPT A' || cleanAns === 'OPT 1') correctIndex = 0;
+              else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2' || cleanAns === 'OPT B' || cleanAns === 'OPT 2') correctIndex = 1;
+              else if (cleanAns === 'C' || cleanAns === '3' || cleanAns === 'OPTION C' || cleanAns === 'OPTION 3' || cleanAns === 'OPT C' || cleanAns === 'OPT 3') correctIndex = 2;
+              else if (cleanAns === 'D' || cleanAns === '4' || cleanAns === 'OPTION D' || cleanAns === 'OPTION 4' || cleanAns === 'OPT D' || cleanAns === 'OPT 4') correctIndex = 3;
+              else {
+                const foundIdx = cleanOpts.findIndex((o) => o.toLowerCase().trim() === rawAns.toLowerCase().trim());
+                if (foundIdx !== -1) correctIndex = foundIdx;
+                else {
+                  const partialIdx = cleanOpts.findIndex((o) =>
+                    o.toLowerCase().includes(rawAns.toLowerCase().trim()) ||
+                    rawAns.toLowerCase().trim().includes(o.toLowerCase())
+                  );
+                  if (partialIdx !== -1) correctIndex = partialIdx;
+                }
+              }
+            }
+
+            const rawExp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
+            const rawDetExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
+
+            // ─── Resolve In-Cell Diagram vs Text Image URL with WebP Compression ───
+            const embeddedDrawing = rowImageMap.get(excelRowNumber);
+            const textImgUrl = imgKey && row[imgKey] !== undefined && row[imgKey] !== null ? String(row[imgKey]).trim() : '';
+
+            let finalImgUrl = '';
+            if (embeddedDrawing && embeddedDrawing.dataUrl) {
+              finalImgUrl = await compressImageDataUrl(embeddedDrawing.dataUrl);
+            } else if (textImgUrl && !textImgUrl.startsWith('[') && !textImgUrl.toLowerCase().includes('paste image')) {
+              finalImgUrl = textImgUrl;
+            }
+
+            const exp = rawExp || rawDetExp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`;
+            const detExp = rawDetExp || rawExp || '';
+
+            const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
+            const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
+
+            const explicitRowTopic = topicKey && row[topicKey] !== undefined && row[topicKey] !== null ? String(row[topicKey]).trim() : '';
+            let rowTopic = explicitRowTopic;
+            if (!rowTopic && qText && subjKey && row[subjKey] && String(row[subjKey]).trim() !== rowSubject) {
+              rowTopic = String(row[subjKey]).trim();
+            }
+            if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
+              rowTopic = sheetName;
+            }
+            if (!rowTopic) rowTopic = selectedTopic || 'General Module';
+
+            if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
+              rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+            }
+
+            allParsedQuestions.push({
+              course_id: selectedCourseId,
+              subject: rowSubject,
+              topic: rowTopic,
+              topic_tag: `${rowSubject} - ${rowTopic}`,
+              question_text: qText,
+              image_url: finalImgUrl,
+              options: cleanOpts,
+              correct_option: correctIndex,
+              explanation: exp,
+              detailed_explanation: detExp,
+            });
+            sheetParsedCount++;
           }
-          if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
-            rowTopic = sheetName;
-          }
-          if (!rowTopic) rowTopic = selectedTopic || 'General Module';
 
-          if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
-            rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+          if (sheetParsedCount > 0) {
+            sheetStats.push(`${sheetName} (${sheetParsedCount})`);
           }
-
-          allParsedQuestions.push({
-            course_id: selectedCourseId,
-            subject: rowSubject,
-            topic: rowTopic,
-            topic_tag: `${rowSubject} - ${rowTopic}`,
-            question_text: qText,
-            image_url: qImgUrl,
-            options: cleanOpts,
-            correct_option: correctIndex,
-            explanation: exp,
-            detailed_explanation: detExp,
-          });
-          sheetParsedCount++;
+        }
+      } else {
+        // ─── ROBUST CSV / XLS SHEETJS FALLBACK ENGINE ───
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellText: false, WTF: false });
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          setExcelError('The selected spreadsheet has no readable sheets.');
+          setParsedExcelQuestions([]);
+          setExcelTotalParsed(0);
+          return;
         }
 
-        if (sheetParsedCount > 0) {
-          sheetStats.push(`${sheetName} (${sheetParsedCount})`);
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName];
+          if (!worksheet) continue;
+
+          const rawGrid: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
+          if (!rawGrid || rawGrid.length === 0) continue;
+
+          const nonEmptyRows = rawGrid.filter((r) => Array.isArray(r) && r.some((c) => String(c ?? '').trim() !== ''));
+          if (nonEmptyRows.length === 0) continue;
+
+          let headerRowIdx = 0;
+          let maxHeaderScore = 0;
+          const headerKeywords = [
+            'question', 'prompt', 'problem', 'statement', 'mcq', 'ques', 'qtext',
+            'option', 'choice', 'opta', 'opt1', 'opt a', 'option a', 'option 1',
+            'answer', 'correct', 'ans', 'solution', 'explanation', 'subject', 'topic', 'chapter'
+          ];
+
+          for (let rIdx = 0; rIdx < Math.min(15, rawGrid.length); rIdx++) {
+            const row = rawGrid[rIdx];
+            if (!Array.isArray(row)) continue;
+            let score = 0;
+            row.forEach((cell) => {
+              const cellNorm = String(cell ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (headerKeywords.some((k) => cellNorm.includes(k.replace(/[^a-z0-9]/g, '')))) {
+                score += 2;
+              }
+            });
+            if (score > maxHeaderScore) {
+              maxHeaderScore = score;
+              headerRowIdx = rIdx;
+            }
+          }
+
+          const rawHeaderRow = rawGrid[headerRowIdx] || [];
+          const colKeys: string[] = [];
+          const seenKeys = new Set<string>();
+
+          rawHeaderRow.forEach((h: any, cIdx: number) => {
+            let k = String(h ?? '').trim();
+            if (!k) k = `col_${cIdx}`;
+            let uniqueKey = k;
+            let counter = 1;
+            while (seenKeys.has(uniqueKey.toLowerCase())) {
+              uniqueKey = `${k}_${counter++}`;
+            }
+            seenKeys.add(uniqueKey.toLowerCase());
+            colKeys.push(uniqueKey);
+          });
+
+          const sheetObjRows: Record<string, any>[] = [];
+          for (let rIdx = headerRowIdx + 1; rIdx < rawGrid.length; rIdx++) {
+            const row = rawGrid[rIdx];
+            if (!Array.isArray(row) || !row.some((c) => String(c ?? '').trim() !== '')) continue;
+            const rowObj: Record<string, any> = {};
+            colKeys.forEach((key, cIdx) => {
+              rowObj[key] = row[cIdx] !== undefined ? String(row[cIdx]).trim() : '';
+            });
+            sheetObjRows.push(rowObj);
+          }
+
+          if (sheetObjRows.length === 0) continue;
+
+          const normCols = colKeys.map((k) => ({
+            original: k,
+            norm: k.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          }));
+
+          const usedCols = new Set<string>();
+          const matchCol = (
+            exactPatterns: string[],
+            prefixPatterns: string[] = [],
+            excludeRegex?: RegExp
+          ): string | null => {
+            for (const item of normCols) {
+              if (usedCols.has(item.original)) continue;
+              if (excludeRegex && excludeRegex.test(item.norm)) continue;
+              for (const p of exactPatterns) {
+                if (item.norm === p) return item.original;
+              }
+            }
+            for (const item of normCols) {
+              if (usedCols.has(item.original)) continue;
+              if (excludeRegex && excludeRegex.test(item.norm)) continue;
+              for (const p of prefixPatterns) {
+                if (p.length >= 3 && (item.norm.startsWith(p) || item.norm === p)) return item.original;
+              }
+            }
+            return null;
+          };
+
+          const subjKey = matchCol(['subject', 'subjectname', 'course', 'stream', 'discipline'], ['subject']);
+          if (subjKey) usedCols.add(subjKey);
+
+          const topicKey = matchCol(['topic', 'topicname', 'chapter', 'chaptername', 'module', 'unit', 'section', 'lesson', 'subtopic'], ['topic', 'chapter', 'module', 'unit']);
+          if (topicKey) usedCols.add(topicKey);
+
+          const qKey = matchCol(
+            ['question', 'questiontext', 'questions', 'prompt', 'problem', 'statement', 'questionstatement', 'questiondescription', 'questiontitle', 'mcq', 'qtext', 'ques', 'q_text'],
+            ['questiontext', 'question', 'problem', 'statement'],
+            /^(questionno|questionnumber|questionid|qno|qid|sno|srno|slno|serialno|serial|marks|weight|score|id|_id)$/i
+          );
+          if (qKey) usedCols.add(qKey);
+
+          const optAKey = matchCol(['optiona', 'opta', 'choicea', 'option1', 'opt1', 'choice1', 'ans1', 'a', 'answera'], ['optiona', 'opta', 'choicea', 'option1']);
+          if (optAKey) usedCols.add(optAKey);
+
+          const optBKey = matchCol(['optionb', 'optb', 'choiceb', 'option2', 'opt2', 'choice2', 'ans2', 'b', 'answerb'], ['optionb', 'optb', 'choiceb', 'option2']);
+          if (optBKey) usedCols.add(optBKey);
+
+          const optCKey = matchCol(['optionc', 'optc', 'choicec', 'option3', 'opt3', 'choice3', 'ans3', 'c', 'answerc'], ['optionc', 'optc', 'choicec', 'option3']);
+          if (optCKey) usedCols.add(optCKey);
+
+          const optDKey = matchCol(['optiond', 'optd', 'choiced', 'option4', 'opt4', 'choice4', 'ans4', 'd', 'answerd'], ['optiond', 'optd', 'choiced', 'option4']);
+          if (optDKey) usedCols.add(optDKey);
+
+          const ansKey = matchCol(['answer', 'correctanswer', 'correctoption', 'correctopt', 'correct', 'ans', 'key', 'anskey', 'answerkey', 'rightanswer', 'solutionkey', 'correctchoice'], ['correctanswer', 'correctoption', 'answer', 'anskey']);
+          if (ansKey) usedCols.add(ansKey);
+
+          const detExpKey = matchCol(['detailedexplanation', 'detailedsolution', 'stepbystep', 'workedout', 'workedsolution', 'detailedsol', 'detailed'], ['detailedexplanation', 'detailedsolution', 'stepbystep']);
+          if (detExpKey) usedCols.add(detExpKey);
+
+          const expKey = matchCol(['explanation', 'solution', 'reason', 'rationale', 'sol', 'expl', 'hint', 'description'], ['explanation', 'solution', 'reason', 'rationale']);
+          if (expKey) usedCols.add(expKey);
+
+          const imgKey = matchCol(['imageurl', 'image', 'diagramurl', 'diagram', 'questionimage', 'photo', 'picture', 'fig', 'figure', 'img'], ['imageurl', 'diagramurl', 'image', 'diagram']);
+          if (imgKey) usedCols.add(imgKey);
+
+          let finalQKey = qKey;
+          if (!finalQKey) {
+            let bestKey: string | null = null;
+            let bestScore = 0;
+            for (const key of colKeys) {
+              if (usedCols.has(key)) continue;
+              const samples = sheetObjRows.slice(0, 30).map((r) => (r[key] !== undefined && r[key] !== null ? String(r[key]).trim() : '')).filter(Boolean);
+              const diversity = new Set(samples).size;
+              const avgLen = samples.reduce((s, v) => s + v.length, 0) / (samples.length || 1);
+              const score = diversity * avgLen;
+              if (score > bestScore && avgLen >= 2) {
+                bestScore = score;
+                bestKey = key;
+              }
+            }
+            if (bestKey) finalQKey = bestKey;
+          }
+
+          let sheetParsedCount = 0;
+          for (const row of sheetObjRows) {
+            let qText = finalQKey && row[finalQKey] !== undefined && row[finalQKey] !== null ? String(row[finalQKey]).trim() : '';
+
+            if (!qText) {
+              let bestVal = '';
+              for (const key of colKeys) {
+                if (usedCols.has(key)) continue;
+                const val = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
+                if (val.length > bestVal.length) bestVal = val;
+              }
+              if (bestVal.length >= 2) qText = bestVal;
+            }
+
+            qText = cleanQuestionText(qText);
+            if (!qText || qText.length < 1) continue;
+
+            let optA = optAKey && row[optAKey] !== undefined && row[optAKey] !== null ? stripOptPrefix(String(row[optAKey]).trim()) : '';
+            let optB = optBKey && row[optBKey] !== undefined && row[optBKey] !== null ? stripOptPrefix(String(row[optBKey]).trim()) : '';
+            let optC = optCKey && row[optCKey] !== undefined && row[optCKey] !== null ? stripOptPrefix(String(row[optCKey]).trim()) : '';
+            let optD = optDKey && row[optDKey] !== undefined && row[optDKey] !== null ? stripOptPrefix(String(row[optDKey]).trim()) : '';
+
+            const rawOpts = [optA, optB, optC, optD].filter((o) => o !== '');
+            while (rawOpts.length < 4) rawOpts.push(`Option ${String.fromCharCode(65 + rawOpts.length)}`);
+            const cleanOpts = rawOpts.slice(0, 4);
+
+            const rawAns = ansKey && row[ansKey] !== undefined && row[ansKey] !== null ? String(row[ansKey]).trim() : '';
+            let correctIndex = 0;
+            if (rawAns !== '') {
+              const cleanAns = rawAns.toUpperCase().trim().replace(/^[\(\[\s]+/, '').replace(/[\)\]\.\,\s]+$/, '').trim();
+              if (cleanAns === 'A' || cleanAns === '1' || cleanAns === 'OPTION A' || cleanAns === 'OPTION 1' || cleanAns === 'OPT A' || cleanAns === 'OPT 1') correctIndex = 0;
+              else if (cleanAns === 'B' || cleanAns === '2' || cleanAns === 'OPTION B' || cleanAns === 'OPTION 2' || cleanAns === 'OPT B' || cleanAns === 'OPT 2') correctIndex = 1;
+              else if (cleanAns === 'C' || cleanAns === '3' || cleanAns === 'OPTION C' || cleanAns === 'OPTION 3' || cleanAns === 'OPT C' || cleanAns === 'OPT 3') correctIndex = 2;
+              else if (cleanAns === 'D' || cleanAns === '4' || cleanAns === 'OPTION D' || cleanAns === 'OPTION 4' || cleanAns === 'OPT D' || cleanAns === 'OPT 4') correctIndex = 3;
+              else {
+                const foundIdx = cleanOpts.findIndex((o) => o.toLowerCase().trim() === rawAns.toLowerCase().trim());
+                if (foundIdx !== -1) correctIndex = foundIdx;
+                else {
+                  const partialIdx = cleanOpts.findIndex((o) =>
+                    o.toLowerCase().includes(rawAns.toLowerCase().trim()) ||
+                    rawAns.toLowerCase().trim().includes(o.toLowerCase())
+                  );
+                  if (partialIdx !== -1) correctIndex = partialIdx;
+                }
+              }
+            }
+
+            const rawExp = expKey && row[expKey] !== undefined && row[expKey] !== null ? String(row[expKey]).trim() : '';
+            const rawDetExp = detExpKey && row[detExpKey] !== undefined && row[detExpKey] !== null ? String(row[detExpKey]).trim() : '';
+            const qImgUrl = imgKey && row[imgKey] !== undefined && row[imgKey] !== null ? String(row[imgKey]).trim() : '';
+
+            const exp = rawExp || rawDetExp || `Correct Answer: Option ${String.fromCharCode(65 + correctIndex)} (${cleanOpts[correctIndex] || ''})`;
+            const detExp = rawDetExp || rawExp || '';
+
+            const sheetSubjectGuess = resolveToConfiguredSubject(sheetName) || sheetName;
+            const rowSubject = selectedSubject || resolveToConfiguredSubject(subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (subjKey && row[subjKey] !== undefined ? String(row[subjKey]).trim() : '') || (sheetSubjectGuess !== 'Sheet1' && sheetSubjectGuess !== 'Questions' ? sheetSubjectGuess : '') || 'General';
+
+            const explicitRowTopic = topicKey && row[topicKey] !== undefined && row[topicKey] !== null ? String(row[topicKey]).trim() : '';
+            let rowTopic = explicitRowTopic;
+            if (!rowTopic && qText && subjKey && row[subjKey] && String(row[subjKey]).trim() !== rowSubject) {
+              rowTopic = String(row[subjKey]).trim();
+            }
+            if (!rowTopic && sheetName && !['sheet1', 'sheet2', 'sheet3', 'questions', 'data', 'table1'].includes(sheetName.toLowerCase())) {
+              rowTopic = sheetName;
+            }
+            if (!rowTopic) rowTopic = selectedTopic || 'General Module';
+
+            if (rowTopic.toLowerCase().startsWith(rowSubject.toLowerCase())) {
+              rowTopic = rowTopic.slice(rowSubject.length).replace(/^[\s\-:]+/, '').trim() || rowTopic;
+            }
+
+            allParsedQuestions.push({
+              course_id: selectedCourseId,
+              subject: rowSubject,
+              topic: rowTopic,
+              topic_tag: `${rowSubject} - ${rowTopic}`,
+              question_text: qText,
+              image_url: qImgUrl,
+              options: cleanOpts,
+              correct_option: correctIndex,
+              explanation: exp,
+              detailed_explanation: detExp,
+            });
+            sheetParsedCount++;
+          }
+
+          if (sheetParsedCount > 0) {
+            sheetStats.push(`${sheetName} (${sheetParsedCount})`);
+          }
         }
       }
 
@@ -930,12 +1259,10 @@ export default function QuestionManagementPage() {
       };
 
       // 1. Build fingerprint set of ALL existing questions in database for deduplication
-      // ONLY include questions from the SAME COURSE to avoid cross-course false positives
       const existingDbFingerprints = new Set<string>();
       const currentCourseIdNorm = String(selectedCourseId || '').trim().toLowerCase();
       (questions || []).forEach((eq: any) => {
         if (eq.is_active === false) return;
-        // Only fingerprint questions from the same course
         const eqCourseRaw = typeof eq.course_id === 'object' ? (eq.course_id?._id || eq.course_id?.id || '') : String(eq.course_id || '');
         const eqCourseNorm = String(eqCourseRaw).trim().toLowerCase();
         if (eqCourseNorm !== currentCourseIdNorm) return;
@@ -945,7 +1272,7 @@ export default function QuestionManagementPage() {
       console.log(`[ExcelDedup] Existing DB fingerprints for course "${currentCourseIdNorm}": ${existingDbFingerprints.size}`);
 
       // 2. Deduplicate questions from Excel file against file duplicates AND database duplicates
-      const seenInFile = new Map<string, { idx: number; q: any }>(); // fp -> first occurrence
+      const seenInFile = new Map<string, { idx: number; q: any }>();
       const uniqueParsedQuestions: any[] = [];
       let fileDups = 0;
       let dbDups = 0;
@@ -988,66 +1315,104 @@ export default function QuestionManagementPage() {
     }
   };
 
-  const downloadSampleExcelTemplate = () => {
-    const sampleData = [
-      {
-        Subject: 'Chemistry',
-        Topic: 'Periodic Table',
-        Question: 'Which element belongs to the alkali metal group?',
-        'Image URL': '',
-        'Option A': 'Sodium (Na)',
-        'Option B': 'Magnesium (Mg)',
-        'Option C': 'Aluminium (Al)',
-        'Option D': 'Chlorine (Cl)',
-        Answer: 'A',
-        Explanation: 'Sodium is a Group 1 element, also known as an alkali metal.',
-        'Detailed Explanation': 'Step 1: Group 1 elements are known as alkali metals.\nStep 2: Sodium (Na) has electronic configuration 2, 8, 1 with 1 valence electron.\nStep 3: Therefore, Sodium belongs to the alkali metal group.'
-      },
-      {
-        Subject: 'Physics',
-        Topic: 'Optics & Ray Diagrams',
-        Question: 'In the given ray diagram, what type of image is formed by the convex lens when the object is at 2F?',
-        'Image URL': 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
-        'Option A': 'Real, inverted, and same size',
-        'Option B': 'Virtual, erect, and magnified',
-        'Option C': 'Real, inverted, and diminished',
-        'Option D': 'Virtual, erect, and diminished',
-        Answer: 'A',
-        Explanation: 'When an object is placed at 2F of a convex lens, a real, inverted image of the same size is formed at 2F on the other side.',
-        'Detailed Explanation': 'Step 1: Object position = 2F1.\nStep 2: Ray parallel to principal axis passes through F2.\nStep 3: Ray through optical centre passes undeviated.\nStep 4: Intersection occurs at 2F2 with magnification m = -1.'
-      },
-      {
-        Subject: 'Physics',
-        Topic: 'Electrostatics',
-        Question: 'What is the SI unit of electric charge?',
-        'Image URL': '',
-        'Option A': 'Coulomb',
-        'Option B': 'Ampere',
-        'Option C': 'Volt',
-        'Option D': 'Ohm',
-        Answer: 'A',
-        Explanation: 'Electric charge is measured in Coulombs (C).',
-        'Detailed Explanation': 'Step 1: Electric charge is a fundamental property of matter.\nStep 2: SI unit of electric charge is Coulomb (C), named after Charles-Augustin de Coulomb.\nStep 3: 1 C = 1 A * 1 s.'
-      },
-      {
-        Subject: 'Mathematics',
-        Topic: 'Calculus',
-        Question: 'What is the derivative of sin(x) with respect to x?',
-        'Image URL': '',
-        'Option A': 'cos(x)',
-        'Option B': '-cos(x)',
-        'Option C': 'tan(x)',
-        'Option D': '-sin(x)',
-        Answer: 'A',
-        Explanation: 'The derivative of sin(x) is cos(x).',
-        'Detailed Explanation': 'Step 1: Using fundamental limit definition of derivative: d/dx(sin x) = lim(h->0) [sin(x+h) - sin(x)]/h.\nStep 2: Expanding sin(x+h) yields cos(x).'
-      }
-    ];
+  const downloadSampleExcelTemplate = async () => {
+    try {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Examizo Admin Portal';
+      wb.created = new Date();
+      const ws = wb.addWorksheet('Questions');
 
-    const worksheet = XLSX.utils.json_to_sheet(sampleData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Questions');
-    XLSX.writeFile(workbook, 'sample_questions_template.xlsx');
+      ws.columns = [
+        { header: 'Subject', key: 'subject', width: 16 },
+        { header: 'Topic', key: 'topic', width: 24 },
+        { header: 'Question', key: 'question', width: 50 },
+        { header: 'Image URL', key: 'image', width: 30 },
+        { header: 'Option A', key: 'optA', width: 26 },
+        { header: 'Option B', key: 'optB', width: 26 },
+        { header: 'Option C', key: 'optC', width: 26 },
+        { header: 'Option D', key: 'optD', width: 26 },
+        { header: 'Answer', key: 'answer', width: 12 },
+        { header: 'Explanation', key: 'explanation', width: 45 },
+        { header: 'Detailed Explanation', key: 'detExp', width: 55 },
+      ];
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0B192C' },
+      };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+      headerRow.height = 28;
+
+      ws.addRow({
+        subject: 'Science',
+        topic: 'Waves and Optics',
+        question: 'In the given ray diagram, what type of image is formed by the convex lens when the object is at 2F?',
+        image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
+        optA: 'Real, inverted, and same size',
+        optB: 'Virtual, erect, and magnified',
+        optC: 'Real, inverted, and diminished',
+        optD: 'Virtual, erect, and diminished',
+        answer: 'A',
+        explanation: 'When an object is placed at 2F of a convex lens, a real, inverted image of the same size is formed at 2F on the other side.',
+        detExp: 'Step 1: Object position = 2F1.\nStep 2: Ray parallel to principal axis passes through F2.\nStep 3: Ray through optical centre passes undeviated.\nStep 4: Intersection occurs at 2F2 with magnification m = -1.'
+      });
+
+      ws.addRow({
+        subject: 'Science',
+        topic: 'Waves and Optics',
+        question: 'Which optical phenomenon is responsible for the splitting of white light into spectrum colors through a prism?',
+        image: '[Paste diagram image directly into this cell or leave URL]',
+        optA: 'Dispersion',
+        optB: 'Total Internal Reflection',
+        optC: 'Diffraction',
+        optD: 'Polarization',
+        answer: 'A',
+        explanation: 'Dispersion is the phenomenon of splitting white light into its constituent wavelengths.',
+        detExp: 'Step 1: Different wavelengths of light travel with different velocities in glass.\nStep 2: Violet bends the most and red bends the least, separating into VIBGYOR.'
+      });
+
+      ws.addRow({
+        subject: 'Physics',
+        topic: 'Electrostatics',
+        question: 'What is the SI unit of electric charge?',
+        image: '',
+        optA: 'Coulomb',
+        optB: 'Ampere',
+        optC: 'Volt',
+        optD: 'Ohm',
+        answer: 'A',
+        explanation: 'Electric charge is measured in Coulombs (C).',
+        detExp: 'Step 1: Electric charge is a fundamental property of matter.\nStep 2: SI unit of electric charge is Coulomb (C), named after Charles-Augustin de Coulomb.\nStep 3: 1 C = 1 A * 1 s.'
+      });
+
+      ws.addRow({
+        subject: 'Chemistry',
+        topic: 'Periodic Table',
+        question: 'Which element belongs to the alkali metal group (Group 1)?',
+        image: '',
+        optA: 'Sodium (Na)',
+        optB: 'Magnesium (Mg)',
+        optC: 'Aluminium (Al)',
+        optD: 'Chlorine (Cl)',
+        answer: 'A',
+        explanation: 'Sodium is a Group 1 element, also known as an alkali metal.',
+        detExp: 'Step 1: Group 1 elements are known as alkali metals.\nStep 2: Sodium (Na) has electronic configuration 2, 8, 1 with 1 valence electron.\nStep 3: Therefore, Sodium belongs to the alkali metal group.'
+      });
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Examizo_Question_Import_Template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error('[TemplateGenError]', e);
+    }
   };
 
   // Plain text parsing
@@ -2077,8 +2442,13 @@ export default function QuestionManagementPage() {
                 <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
                   <div className="flex justify-between items-center p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg">
                     <div>
-                      <h4 className="font-bold text-emerald-900 dark:text-emerald-300 text-xs">Excel & CSV Spreadsheet Parser</h4>
-                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">Upload .xlsx, .xls, or .csv files. Columns for Question, Options (A-D), Answer, and Explanation will be parsed.</p>
+                      <h4 className="font-bold text-emerald-900 dark:text-emerald-300 text-xs flex items-center gap-1.5">
+                        <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        Excel & CSV Spreadsheet Parser (with In-Cell Diagram Extraction)
+                      </h4>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                        Upload .xlsx, .xls, or .csv files. You can paste images directly into cells in Column D (&quot;Image URL&quot;), and diagrams will be automatically extracted and optimized.
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -2101,17 +2471,17 @@ export default function QuestionManagementPage() {
                       {excelParsing ? (
                         <div className="flex flex-col items-center space-y-2 py-6">
                           <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                          <span className="font-bold text-slate-700 dark:text-slate-300">Parsing Excel spreadsheet...</span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">Extracting questions &amp; embedded in-cell diagrams...</span>
                         </div>
                       ) : (
                         <>
                           <FileSpreadsheet className="w-12 h-12 text-emerald-500" />
                           <div>
                             <span className="font-bold text-slate-900 dark:text-white block text-sm mb-1">
-                              {excelFileName ? `Selected: ${excelFileName}` : 'Upload Excel or CSV File'}
+                              {excelFileName ? `Selected: ${excelFileName}` : 'Upload Excel (.xlsx) or CSV File'}
                             </span>
                             <span className="text-[11px] text-slate-500 block">
-                              Supports Microsoft Excel (.xlsx, .xls) and CSV (.csv) spreadsheets with question & answer columns.
+                              Supports Microsoft Excel (.xlsx with in-cell diagrams) and CSV (.csv) spreadsheets.
                             </span>
                           </div>
 
@@ -2139,6 +2509,12 @@ export default function QuestionManagementPage() {
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200">
                               {excelTotalParsed} rows parsed
                             </span>
+                            {parsedExcelQuestions.some((q: any) => !!q.image_url) && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 flex items-center gap-1">
+                                <ImageIcon className="w-3 h-3" />
+                                {parsedExcelQuestions.filter((q: any) => !!q.image_url).length} with Diagrams
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
                             Target Topic: <strong className="text-slate-800 dark:text-slate-200">{selectedSubject}</strong> ➔ <strong className="text-slate-800 dark:text-slate-200">{selectedTopic || 'General'}</strong>
@@ -2200,7 +2576,7 @@ export default function QuestionManagementPage() {
                                 <div className="flex items-center gap-1 shrink-0">
                                   {q.image_url && (
                                     <span className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold rounded flex items-center gap-1">
-                                      <ImageIcon className="w-3 h-3" /> Image
+                                      <ImageIcon className="w-3 h-3" /> Diagram
                                     </span>
                                   )}
                                   <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-semibold rounded">
@@ -2210,15 +2586,31 @@ export default function QuestionManagementPage() {
                               </div>
 
                               {q.image_url && (
-                                <div className="flex items-center gap-2 p-1.5 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 rounded-md">
-                                  <img
-                                    src={q.image_url}
-                                    alt="Diagram preview"
-                                    className="w-10 h-10 object-contain rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-                                  />
-                                  <span className="text-[10px] text-blue-700 dark:text-blue-300 font-mono truncate max-w-xs">
-                                    {q.image_url}
-                                  </span>
+                                <div className="flex items-center justify-between p-2 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <img
+                                      src={q.image_url}
+                                      alt="Diagram preview"
+                                      className="w-14 h-14 object-contain rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xs"
+                                    />
+                                    <div>
+                                      <span className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1">
+                                        <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                                        {q.image_url.startsWith('data:image') ? 'Extracted In-Cell Diagram' : 'External Image URL'}
+                                      </span>
+                                      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono block max-w-sm truncate">
+                                        {q.image_url.startsWith('data:image') ? 'Embedded in cell (WebP optimized)' : q.image_url}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeParsedQuestionImage(idx)}
+                                    className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors text-xs font-semibold flex items-center gap-1"
+                                    title="Remove this diagram"
+                                  >
+                                    <X className="w-3.5 h-3.5" /> Remove
+                                  </button>
                                 </div>
                               )}
 

@@ -193,32 +193,54 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1. High-Speed Multi-Row Literal Batching on Cloudflare D1 (500 questions per SQL query in ~300ms)
+    // 1. High-Speed Multi-Row Literal Batching on Cloudflare D1 with Adaptive Byte-Size Capping
     try {
       let d1InsertedCount = 0;
-      const CHUNK_SIZE = 500;
+      const MAX_BATCH_BYTES = 350 * 1024; // 350 KB per SQL query batch (Cloudflare D1 safe limit)
+      const batches: any[][] = [];
+      let currentBatch: any[] = [];
+      let currentBatchBytes = 0;
 
-      for (let i = 0; i < deduplicatedQuestions.length; i += CHUNK_SIZE) {
-        const chunk = deduplicatedQuestions.slice(i, i + CHUNK_SIZE);
-        const rowStrings = chunk.map((q) => {
-          return `(${escapeSql(q.id)}, ${escapeSql(q.course_id)}, ${escapeSql(q.topic_tag)}, 'MCQ', ${escapeSql(q.question_text)}, ${escapeSql(JSON.stringify(q.options))}, ${q.correct_option}, '', 1, ${escapeSql(q.explanation || '')}, ${escapeSql(q.detailed_explanation || '')}, 1, ${escapeSql(q.image_url || '')})`;
-        });
+      for (const q of deduplicatedQuestions) {
+        const rowSql = `(${escapeSql(q.id)}, ${escapeSql(q.course_id)}, ${escapeSql(q.topic_tag)}, 'MCQ', ${escapeSql(q.question_text)}, ${escapeSql(JSON.stringify(q.options))}, ${q.correct_option}, '', 1, ${escapeSql(q.explanation || '')}, ${escapeSql(q.detailed_explanation || '')}, 1, ${escapeSql(q.image_url || '')})`;
+        const rowBytes = rowSql.length * 2;
 
+        if ((currentBatchBytes + rowBytes > MAX_BATCH_BYTES || currentBatch.length >= 500) && currentBatch.length > 0) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBatchBytes = 0;
+        }
+        currentBatch.push({ q, rowSql });
+        currentBatchBytes += rowBytes;
+      }
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+      }
+
+      for (const batch of batches) {
+        const rowStrings = batch.map((item) => item.rowSql);
         const sql = `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES ${rowStrings.join(', ')}`;
 
         const d1Success = await executeD1(sql, []);
         if (d1Success) {
-          d1InsertedCount += chunk.length;
+          d1InsertedCount += batch.length;
         } else {
-          // Robust fallback to sub-chunks of 100 if needed
-          for (let j = 0; j < chunk.length; j += 100) {
-            const subChunk = chunk.slice(j, j + 100);
-            const subRowStrings = subChunk.map((q) => {
-              return `(${escapeSql(q.id)}, ${escapeSql(q.course_id)}, ${escapeSql(q.topic_tag)}, 'MCQ', ${escapeSql(q.question_text)}, ${escapeSql(JSON.stringify(q.options))}, ${q.correct_option}, '', 1, ${escapeSql(q.explanation || '')}, ${escapeSql(q.detailed_explanation || '')}, 1, ${escapeSql(q.image_url || '')})`;
-            });
+          // Robust fallback: sub-chunk into single rows or pairs if batch had oversized image payload
+          for (let j = 0; j < batch.length; j += 10) {
+            const subBatch = batch.slice(j, j + 10);
+            const subRowStrings = subBatch.map((item) => item.rowSql);
             const subSql = `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES ${subRowStrings.join(', ')}`;
             const subSuccess = await executeD1(subSql, []);
-            if (subSuccess) d1InsertedCount += subChunk.length;
+            if (subSuccess) {
+              d1InsertedCount += subBatch.length;
+            } else {
+              // 1-by-1 fallback to salvage all valid rows
+              for (const singleItem of subBatch) {
+                const singleSql = `INSERT INTO questions (id, course_id, topic_tag, question_type, question_text, options_json, correct_option, sample_answer, marks, explanation, detailed_explanation, is_active, image_url) VALUES ${singleItem.rowSql}`;
+                const singleSuccess = await executeD1(singleSql, []);
+                if (singleSuccess) d1InsertedCount += 1;
+              }
+            }
           }
         }
       }
