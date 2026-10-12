@@ -114,7 +114,7 @@ export async function POST(req: Request) {
         ? String(rawCourse._id || rawCourse.id || rawCourse.name || '')
         : String(rawCourse || 'course_jee_2027');
 
-      const imgUrl = q.image_url || q.image || q.question_image || q.diagram || q.img || '';
+      const imgUrl = q.image_url || q.imageUrl || q.image || q.question_image || q.diagram || q.img || '';
 
       preparedQuestions.push({
         _id: generateId(),
