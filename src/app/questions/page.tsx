@@ -1339,7 +1339,7 @@ export default function QuestionManagementPage() {
         { header: 'Detailed Explanation', key: 'detExp', width: 65 },
       ];
 
-      // Add realistic Science -> Waves and Optics sample questions
+      // Row 2: Single Demo Question for reference
       ws.addRow({
         subject: 'Science',
         topic: 'Waves and Optics',
@@ -1354,47 +1354,22 @@ export default function QuestionManagementPage() {
         detExp: 'Step 1: Object position u = -2f.\nStep 2: Lens formula 1/f = 1/v - 1/u gives v = +2f.\nStep 3: Magnification m = v/u = -1 (real, inverted, equal size).'
       });
 
-      ws.addRow({
-        subject: 'Science',
-        topic: 'Waves and Optics',
-        question: 'Which phenomenon demonstrates the transverse wave nature of light waves?',
-        image: '',
-        optA: 'Polarization',
-        optB: 'Diffraction',
-        optC: 'Interference',
-        optD: 'Refraction',
-        answer: 'A',
-        explanation: 'Only transverse waves can be polarized; longitudinal waves (like sound waves) cannot be polarized.',
-        detExp: 'Step 1: Polarization restricts light vibrations to a single plane perpendicular to propagation.\nStep 2: Since longitudinal oscillations are parallel to propagation, they cannot be polarized.\nStep 3: Hence, polarization proves light is a transverse wave.'
-      });
-
-      ws.addRow({
-        subject: 'Science',
-        topic: 'Waves and Optics',
-        question: 'When white light passes through a glass triangular prism, which color of light bends the most?',
-        image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600',
-        optA: 'Violet',
-        optB: 'Red',
-        optC: 'Yellow',
-        optD: 'Green',
-        answer: 'A',
-        explanation: 'Violet light has the shortest wavelength and highest refractive index in glass, so it deviates the most.',
-        detExp: 'Step 1: Refractive index n is inversely proportional to wavelength (Cauchy formula).\nStep 2: Violet has the shortest wavelength in visible spectrum (~400 nm), hence largest refractive index.\nStep 3: Angle of deviation delta = (n - 1)A is maximum for violet.'
-      });
-
-      ws.addRow({
-        subject: 'Science',
-        topic: 'Waves and Optics',
-        question: 'What is the essential condition for Total Internal Reflection (TIR) to occur at an interface?',
-        image: '',
-        optA: 'Light travels from denser to rarer medium and angle of incidence > critical angle',
-        optB: 'Light travels from rarer to denser medium and angle of incidence > critical angle',
-        optC: 'Angle of incidence is exactly 0 degrees',
-        optD: 'Angle of refraction is exactly 0 degrees',
-        answer: 'A',
-        explanation: 'TIR occurs only when light travels from an optically denser medium to a rarer medium and the angle of incidence exceeds the critical angle.',
-        detExp: 'Step 1: Ray must attempt to pass from denser (n1) to rarer (n2) medium.\nStep 2: By Snell\'s Law, n1 * sin(i) = n2 * sin(r).\nStep 3: When i > critical angle (ic = arcsin(n2/n1)), sin(r) > 1 which is impossible, resulting in total reflection.'
-      });
+      // Rows 3 to 30: Empty pre-formatted rows ready for teacher / user data entry
+      for (let r = 3; r <= 30; r++) {
+        ws.addRow({
+          subject: '',
+          topic: '',
+          question: '',
+          image: '',
+          optA: '',
+          optB: '',
+          optC: '',
+          optD: '',
+          answer: '',
+          explanation: '',
+          detExp: ''
+        });
+      }
 
       // Apply complete styling, borders, word-wrapping, and color tints to each row & cell
       ws.eachRow((row, rowNumber) => {
