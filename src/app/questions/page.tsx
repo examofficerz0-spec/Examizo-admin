@@ -1344,7 +1344,7 @@ export default function QuestionManagementPage() {
         subject: 'Science',
         topic: 'Waves and Optics',
         question: 'In the ray diagram for a convex lens, where is the image formed when the object is placed at 2F?',
-        image: '[Paste diagram image directly in this cell or type URL]',
+        image: '[Paste diagram here - please use image less than 100KB or leave URL]',
         optA: 'Real, inverted, and same size at 2F',
         optB: 'Virtual, erect, and magnified',
         optC: 'Real, inverted, and diminished at F',
@@ -1476,7 +1476,7 @@ export default function QuestionManagementPage() {
 
       guideWs.addRow({
         title: '1. In-Cell Diagrams (Column D)',
-        desc: 'You can directly copy & paste (or Insert -> Pictures) any image into Column D ("Image URL / Diagram"). Recommended file sizes are 50 KB to 250 KB (.png, .jpg, .webp). The parser will automatically extract and optimize them for the question bank.'
+        desc: 'You can directly copy & paste (or Insert -> Pictures) any image into Column D ("Image URL / Diagram"). Directive: Please use images less than 100 KB (.png, .jpg, or .webp) for fastest student viewing speed and smooth portal performance. There is no hard size block; all diagrams are automatically optimized upon upload.'
       });
       guideWs.addRow({
         title: '2. External URLs (Column D)',
@@ -2557,6 +2557,9 @@ export default function QuestionManagementPage() {
                       </h4>
                       <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
                         Upload .xlsx, .xls, or .csv files. You can paste images directly into cells in Column D (&quot;Image URL&quot;), and diagrams will be automatically extracted and optimized.
+                      </p>
+                      <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 mt-1 flex items-center gap-1">
+                        💡 Directive: Please use images less than 100 KB for optimal speed and smooth mobile performance.
                       </p>
                     </div>
                     <button
