@@ -196,9 +196,15 @@ export async function POST(req: Request) {
 
     // 2. Shared DB Local Resilience Fallback
     const db = readSharedDb();
-    let selectedQuestionIds = Array.isArray(question_ids) && question_ids.length > 0 ? question_ids : [];
+    const cleanCid = String(typeof course_id === 'object' ? course_id?._id || course_id?.id : course_id);
+    let selectedQuestionIds = Array.isArray(question_ids) && question_ids.length > 0 ? question_ids.map(String) : [];
     if (selectedQuestionIds.length === 0) {
-      selectedQuestionIds = (db.questions || []).filter((q) => q.course_id === course_id && q.is_active).map((q) => q._id || q.id);
+      selectedQuestionIds = (db.questions || [])
+        .filter((q) => {
+          const qCid = String(typeof q.course_id === 'object' ? q.course_id?._id || q.course_id?.id : q.course_id);
+          return qCid === cleanCid && q.is_active !== false;
+        })
+        .map((q) => String(q._id || q.id));
     }
 
     const newTest = {

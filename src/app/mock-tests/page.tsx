@@ -7,8 +7,9 @@ import { AdminAccessGuard } from '@/components/layout/AdminAccessGuard';
 import { canAccessCourse, isSuperAdmin } from '@/lib/permissions';
 import {
   FileCheck, Plus, Trash2, Clock, Award, HelpCircle, X, CheckCircle2,
-  BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3
+  BookOpen, Filter, CheckSquare, Square, Search, Folder, Sliders, Zap, Sparkles, Edit3, Eye, Image as ImageIcon
 } from 'lucide-react';
+import { QuestionDiagram } from '@/components/ui/QuestionDiagram';
 import { getAdminSwrCache, setAdminSwrCache, subscribeAdminSwrCache, broadcastAdminChange } from '@/lib/adminSwrCache';
 
 export default function MockTestManagementPage() {
@@ -36,6 +37,9 @@ export default function MockTestManagementPage() {
 
   // Mock Test Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTestId, setEditingTestId] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewTestObj, setPreviewTestObj] = useState<any>(null);
   const [courseId, setCourseId] = useState('');
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'full' | 'sectional'>('full');
@@ -293,8 +297,12 @@ export default function MockTestManagementPage() {
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/mock-tests', {
-        method: 'POST',
+      const isEdit = Boolean(editingTestId);
+      const url = isEdit ? `/api/mock-tests/${editingTestId}` : '/api/mock-tests';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           course_id: courseId,
@@ -311,9 +319,10 @@ export default function MockTestManagementPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to create mock test');
+        setError(data.error || `Failed to ${isEdit ? 'update' : 'create'} mock test`);
       } else {
         setShowAddModal(false);
+        setEditingTestId(null);
         setTitle('');
         setSelectedQuestionIds([]);
         setSelectedPresetId('');
@@ -324,6 +333,36 @@ export default function MockTestManagementPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleOpenEditTest = (test: any) => {
+    setEditingTestId(test._id || test.id);
+    const cId = typeof test.course_id === 'object' ? (test.course_id?._id || test.course_id?.id) : test.course_id;
+    setCourseId(String(cId || ''));
+    setTitle(test.title || '');
+    setType(test.type || 'full');
+    setDurationMinutes(test.duration_minutes || 180);
+    setCutoffMarks(test.cutoff_marks || 120);
+    const qIds = Array.isArray(test.question_ids)
+      ? test.question_ids.map((q: any) => typeof q === 'object' ? String(q._id || q.id) : String(q))
+      : [];
+    setSelectedQuestionIds(qIds);
+    setSelectedPresetId(test.preset_id || '');
+    setIsDynamicReshuffle(Boolean(test.is_dynamic_reshuffle));
+    setSubjectAllocations(test.subject_allocations || {});
+    setError('');
+    setShowAddModal(true);
+  };
+
+  const handleOpenPreviewTest = (test: any) => {
+    const qList = (test.question_ids || [])
+      .map((qId: any) => {
+        const idStr = typeof qId === 'object' ? String(qId._id || qId.id) : String(qId);
+        return questions.find((item) => String(item._id || item.id) === idStr) || (typeof qId === 'object' ? qId : null);
+      })
+      .filter(Boolean);
+    setPreviewTestObj({ ...test, resolvedQuestions: qList });
+    setShowPreviewModal(true);
   };
 
   const handleDeleteTest = async (id: string) => {
@@ -380,14 +419,14 @@ export default function MockTestManagementPage() {
     }
   };
 
-  const activeCourse = courses.find((c) => c._id === courseId);
-  const activeCourseSubjects: string[] = activeCourse?.subjects || ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
+  const activeCourse = courses.find((c) => String(c._id || c.id) === String(courseId));
+  const activeCourseSubjects: string[] = activeCourse?.subjects || ['Physics', 'Chemistry', 'Mathematics', 'Biology', 'Science', 'Social Studies'];
 
   const availableCourseQuestions = questions.filter((q) => {
-    const cId = typeof q.course_id === 'object' ? q.course_id?._id : q.course_id;
+    const cId = typeof q.course_id === 'object' ? (q.course_id?._id || q.course_id?.id) : q.course_id;
     const isDirectMatch = String(cId) === String(courseId);
-    const selectedCourseObj = courses.find((c) => String(c._id) === String(courseId));
-    const questionCourseObj = courses.find((c) => String(c._id) === String(cId));
+    const selectedCourseObj = courses.find((c) => String(c._id || c.id) === String(courseId));
+    const questionCourseObj = courses.find((c) => String(c._id || c.id) === String(cId));
 
     const sName = (selectedCourseObj?.name || '').toLowerCase();
     const qName = (questionCourseObj?.name || '').toLowerCase();
@@ -395,7 +434,12 @@ export default function MockTestManagementPage() {
     const isTrackMatch = sName && qName && (
       sName === qName ||
       (sName.includes('neet') && qName.includes('neet')) ||
-      (sName.includes('jee') && qName.includes('jee'))
+      (sName.includes('jee') && qName.includes('jee')) ||
+      (sName.includes('class 7') && qName.includes('class 7')) ||
+      (sName.includes('classs 7') && qName.includes('classs 7')) ||
+      (sName.includes('class 8') && qName.includes('class 8')) ||
+      (sName.includes('class 10') && qName.includes('class 10')) ||
+      (sName.includes('class 12') && qName.includes('class 12'))
     );
 
     return isDirectMatch || isTrackMatch;
@@ -407,25 +451,11 @@ export default function MockTestManagementPage() {
     let subject = 'General';
     let topic = tag;
 
-    // Check GK/GS mapping
-    const isGkGsName = (name: string) => /^(?:gk\/?gs|gk|gs|general\s*(?:knowledge|studies|awareness))/i.test(name.trim());
-    const gkGsSub = activeCourseSubjects.find((s) => isGkGsName(s));
-    if (gkGsSub) {
-      const gkKeywords = [
-        'general knowledge', 'environment', 'general science', 'indian economy',
-        'world geography', 'indian geography', 'indian history', 'indian polity',
-        'history', 'geography', 'polity', 'economy', 'ecology', 'static gk'
-      ];
-      if (gkKeywords.some((k) => tag.toLowerCase().includes(k) || qSub.toLowerCase().includes(k))) {
-        let cleanTag = tag.replace(/^(?:gk\/?gs|gk|gs|general\s*studies)\s*[\-\:\.]\s*/i, '').trim();
-        return { subject: gkGsSub, topic: cleanTag || 'General Topics' };
-      }
-    }
-
+    // Check direct matching in course subjects
     for (const s of activeCourseSubjects) {
       if (
-        tag.toLowerCase().startsWith(s.toLowerCase()) ||
         qSub.toLowerCase() === s.toLowerCase() ||
+        tag.toLowerCase().startsWith(s.toLowerCase()) ||
         tag.toLowerCase().includes(s.toLowerCase())
       ) {
         subject = s;
@@ -435,13 +465,22 @@ export default function MockTestManagementPage() {
       }
     }
 
+    // School Science subsumption: if course has Science, and question topic is Physics/Chemistry/Biology/Optics/Waves/Mechanics
+    if (subject === 'General' && activeCourseSubjects.some((s) => s.toLowerCase() === 'science')) {
+      const scienceKeywords = ['physics', 'chemistry', 'biology', 'botany', 'zoology', 'optics', 'waves', 'mechanics', 'force', 'energy'];
+      if (scienceKeywords.some((k) => qSub.toLowerCase().includes(k) || tag.toLowerCase().includes(k))) {
+        subject = activeCourseSubjects.find((s) => s.toLowerCase() === 'science') || 'Science';
+        topic = tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag;
+      }
+    }
+
     if (subject === 'General' && tag.includes('-')) {
       const parts = tag.split('-');
       subject = parts[0].trim();
       topic = parts.slice(1).join('-').trim();
     }
 
-    return { subject, topic: topic || 'General Topics' };
+    return { subject, topic: topic || tag || 'General Topics' };
   };
 
   // Group questions by Subject -> Topic
@@ -762,13 +801,29 @@ export default function MockTestManagementPage() {
                           <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-brand-50 text-brand-800 dark:bg-brand-950 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
                             {test.course_name || test.course_id?.name || 'General Track'}
                           </span>
-                          <button
-                            onClick={() => handleDeleteTest(test._id)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                            title="Delete test"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenPreviewTest(test)}
+                              className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                              title="Preview Test Questions"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditTest(test)}
+                              className="text-slate-400 hover:text-purple-600 transition-colors p-1"
+                              title="Edit Test Paper"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTest(test._id || test.id)}
+                              className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                              title="Delete test"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
 
                         <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">{test.title}</h3>
@@ -1375,12 +1430,12 @@ export default function MockTestManagementPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {[45, 50, 90, 100, 180, 200, 250, 300].map((limit) => (
+                        {[5, 10, 15, 20, 25, 45, 50, 90, 100, 180].map((limit) => (
                           <button
                             key={limit}
                             type="button"
                             onClick={() => handleAddQuestions(limit)}
-                            className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-black transition-all active:scale-95 shadow-2xs"
+                            className="px-2.5 py-1 bg-white dark:bg-slate-900 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-black transition-all active:scale-95 shadow-2xs"
                           >
                             +{limit}
                           </button>
@@ -1389,9 +1444,9 @@ export default function MockTestManagementPage() {
                         <button
                           type="button"
                           onClick={handleSelectAllInFilter}
-                          className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
+                          className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-2xs"
                         >
-                          Select All
+                          Select All ({availableCourseQuestions.length})
                         </button>
 
                         <div className="flex items-center gap-1 ml-auto">
@@ -1407,10 +1462,10 @@ export default function MockTestManagementPage() {
                           />
                           <button
                             type="button"
-                            onClick={() => handleAddQuestions(batchSelectCount || 50)}
+                            onClick={() => handleAddQuestions(batchSelectCount || 10)}
                             className="px-2.5 py-1 bg-[#0B192C] hover:bg-[#060E18] text-white rounded-md text-xs font-bold transition-all active:scale-95"
                           >
-                            +{batchSelectCount || 50}
+                            +{batchSelectCount || 10}
                           </button>
                         </div>
                       </div>
@@ -1444,13 +1499,13 @@ export default function MockTestManagementPage() {
                     </div>
 
                     {/* Questions Accordion List */}
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-white dark:bg-slate-900">
+                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-white dark:bg-slate-900">
                       {Object.entries(groupedQuestions).map(([sub, topicsMap]) => {
                         if (selectedSubjectFilter !== 'all' && selectedSubjectFilter !== sub) return null;
 
                         return (
                           <div key={sub} className="space-y-2">
-                            <div className="bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded text-[11px] font-extrabold text-slate-800 dark:text-slate-200 flex justify-between items-center">
+                            <div className="bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 rounded text-[11px] font-extrabold text-slate-800 dark:text-slate-200 flex justify-between items-center">
                               <span>📁 Subject: {sub}</span>
                             </div>
 
@@ -1463,31 +1518,89 @@ export default function MockTestManagementPage() {
 
                               if (filteredList.length === 0) return null;
 
+                              const topicIds = filteredList.map((q) => String(q._id || q.id));
+                              const allTopicSelected = topicIds.length > 0 && topicIds.every((id) => selectedQuestionIds.includes(id));
+
                               return (
-                                <div key={top} className="pl-2 border-l-2 border-slate-200 dark:border-slate-700 space-y-1 my-1">
-                                  <span className="text-[10px] font-bold text-slate-500">📖 Topic: {top} ({filteredList.length})</span>
+                                <div key={top} className="pl-2 border-l-2 border-slate-200 dark:border-slate-700 space-y-1.5 my-2">
+                                  <div className="flex justify-between items-center py-0.5">
+                                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                      📖 Topic: {top} ({filteredList.length})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (allTopicSelected) {
+                                          setSelectedQuestionIds((prev) => prev.filter((id) => !topicIds.includes(id)));
+                                        } else {
+                                          setSelectedQuestionIds((prev) => Array.from(new Set([...prev, ...topicIds])));
+                                        }
+                                      }}
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
+                                        allTopicSelected
+                                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 hover:bg-rose-100'
+                                          : 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 hover:bg-blue-100'
+                                      }`}
+                                    >
+                                      {allTopicSelected ? 'Deselect Topic' : `Select All in Topic (${filteredList.length})`}
+                                    </button>
+                                  </div>
 
                                   {filteredList.map((q) => {
-                                    const isSelected = selectedQuestionIds.includes(q._id);
+                                    const qIdStr = String(q._id || q.id);
+                                    const isSelected = selectedQuestionIds.includes(qIdStr);
+                                    const diagSrc = q.image_url || q.imageUrl || q.image;
+
                                     return (
                                       <div
-                                        key={q._id}
-                                        onClick={() => handleToggleQuestion(q._id)}
-                                        className={`p-2 border rounded-lg cursor-pointer transition-all flex items-start gap-2 text-xs ${
+                                        key={qIdStr}
+                                        onClick={() => handleToggleQuestion(qIdStr)}
+                                        className={`p-2.5 border rounded-lg cursor-pointer transition-all flex items-start gap-2.5 text-xs ${
                                           isSelected
-                                            ? 'bg-blue-50 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700'
+                                            ? 'bg-blue-50 border-blue-400 dark:bg-blue-950/40 dark:border-blue-700 shadow-2xs'
                                             : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
                                         }`}
                                       >
-                                        <div className="mt-0.5">
+                                        <div className="mt-0.5 shrink-0">
                                           {isSelected ? (
-                                            <CheckSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                            <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                           ) : (
-                                            <Square className="w-3.5 h-3.5 text-slate-400" />
+                                            <Square className="w-4 h-4 text-slate-400" />
                                           )}
                                         </div>
-                                        <div className="flex-1">
-                                          <p className="line-clamp-2 text-slate-800 dark:text-slate-200">{q.question_text}</p>
+                                        <div className="flex-1 space-y-1 min-w-0">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                              {q.question_type || 'MCQ'}
+                                            </span>
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                              {q.marks || 1} Mark(s)
+                                            </span>
+                                            {diagSrc && (
+                                              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 flex items-center gap-1">
+                                                🖼️ Diagram
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="font-semibold text-slate-900 dark:text-white leading-snug">{q.question_text}</p>
+                                          {diagSrc && (
+                                            <div className="pt-1">
+                                              <img
+                                                src={diagSrc}
+                                                alt="Diagram Preview"
+                                                className="max-h-24 max-w-xs object-contain rounded border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-900"
+                                              />
+                                            </div>
+                                          )}
+                                          {Array.isArray(q.options) && q.options.length > 0 && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-slate-600 dark:text-slate-400 pt-1">
+                                              {q.options.slice(0, 4).map((opt: string, optIdx: number) => (
+                                                <span key={optIdx} className={`truncate ${optIdx === q.correct_option ? 'font-bold text-emerald-600 dark:text-emerald-400' : ''}`}>
+                                                  {String.fromCharCode(65 + optIdx)}. {opt}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     );
@@ -1506,7 +1619,10 @@ export default function MockTestManagementPage() {
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingTestId(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg"
                 >
                   Cancel
@@ -1514,9 +1630,9 @@ export default function MockTestManagementPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg"
+                  className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg shadow-sm"
                 >
-                  {submitting ? 'Publishing...' : 'Publish Mock Test'}
+                  {submitting ? 'Saving...' : editingTestId ? 'Update Mock Test' : 'Publish Mock Test'}
                 </button>
               </div>
             </form>
@@ -1832,6 +1948,181 @@ export default function MockTestManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PREVIEW PAPER MODAL */}
+      {showPreviewModal && previewTestObj && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-start bg-slate-50 dark:bg-slate-950">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    {previewTestObj.course_name || 'Mock Examination'}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {previewTestObj.type === 'sectional' ? 'Sectional Paper' : 'Full Mock Exam'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  {previewTestObj.title}
+                </h3>
+                <div className="flex items-center gap-4 mt-2 text-xs text-slate-600 dark:text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-blue-500" />
+                    <strong>{previewTestObj.duration_minutes} Mins</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <HelpCircle className="w-3.5 h-3.5 text-purple-500" />
+                    <strong>{(previewTestObj.resolvedQuestions || []).length} Questions</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Award className="w-3.5 h-3.5 text-amber-500" />
+                    <strong>Cutoff: {previewTestObj.cutoff_marks} Marks</strong>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleOpenEditTest(previewTestObj);
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Test
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    setPreviewTestObj(null);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Questions Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50 dark:bg-slate-900/50">
+              {(previewTestObj.resolvedQuestions || []).length === 0 ? (
+                <div className="text-center py-12 text-slate-500 text-sm">
+                  No questions found or mapped for this mock test.
+                </div>
+              ) : (
+                previewTestObj.resolvedQuestions.map((q: any, idx: number) => {
+                  const diagSrc = q.image_url || q.imageUrl || q.image;
+                  return (
+                    <div
+                      key={q._id || q.id || idx}
+                      className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-xs space-y-3"
+                    >
+                      <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100 dark:border-slate-700/60">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 font-black text-xs flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {q.subject || 'General'}
+                          </span>
+                          {q.topic_tag && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                              {q.topic_tag}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                            {q.marks || 1} Mark(s)
+                          </span>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                            {q.question_type || 'MCQ'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">
+                          {q.question_text}
+                        </p>
+
+                        {diagSrc && (
+                          <div className="py-2">
+                            <div className="inline-block p-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                              <QuestionDiagram
+                                imageUrl={diagSrc}
+                                alt={`Question ${idx + 1} Diagram`}
+                                className="max-h-56 max-w-md object-contain rounded-lg"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {Array.isArray(q.options) && q.options.length > 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            {q.options.map((opt: string, optIdx: number) => {
+                              const isCorrect = optIdx === Number(q.correct_option);
+                              return (
+                                <div
+                                  key={optIdx}
+                                  className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 ${
+                                    isCorrect
+                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-200 font-semibold'
+                                      : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-5 h-5 rounded flex items-center justify-center text-[11px] font-bold ${
+                                      isCorrect
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {String.fromCharCode(65 + optIdx)}
+                                  </span>
+                                  <span className="flex-1">{opt}</span>
+                                  {isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {(q.explanation || q.detailed_explanation) && (
+                          <div className="mt-2 p-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                            <strong>Explanation: </strong> {q.explanation || q.detailed_explanation}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-950">
+              <span className="text-xs text-slate-500">
+                {(previewTestObj.resolvedQuestions || []).length} Question(s) in Paper
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setPreviewTestObj(null);
+                }}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                Close Preview
+              </button>
+            </div>
           </div>
         </div>
       )}
