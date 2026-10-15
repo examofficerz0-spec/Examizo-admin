@@ -112,6 +112,9 @@ export async function ensureD1Columns() {
   d1ColumnsChecked = true;
   Promise.allSettled([
     executeD1('ALTER TABLE admins ADD COLUMN raw_password TEXT'),
+    executeD1('ALTER TABLE users ADD COLUMN full_name TEXT'),
+    executeD1('ALTER TABLE users ADD COLUMN nickname TEXT'),
+    executeD1('ALTER TABLE users ADD COLUMN dob TEXT'),
     executeD1('ALTER TABLE users ADD COLUMN locked_course_id TEXT'),
     executeD1('ALTER TABLE users ADD COLUMN previous_course_id TEXT'),
     executeD1('ALTER TABLE users ADD COLUMN raw_password TEXT'),

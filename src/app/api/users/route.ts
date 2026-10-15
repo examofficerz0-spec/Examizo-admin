@@ -94,7 +94,10 @@ export async function GET(req: Request) {
           return {
             _id: u.id,
             id: u.id,
-            name: u.name,
+            name: u.nickname || u.full_name || u.name,
+            fullName: u.full_name || u.name,
+            nickname: u.nickname || null,
+            dob: u.dob || null,
             email: u.email,
             auth_provider: isGoogle ? 'google' : (u.auth_provider || 'email'),
             raw_password: isMaster && !isGoogle ? effectiveRawPass : null,
@@ -166,7 +169,10 @@ export async function GET(req: Request) {
       return {
         _id: u.id || u._id,
         id: u.id || u._id,
-        name: u.name,
+        name: u.nickname || u.full_name || u.name,
+        fullName: u.full_name || u.name,
+        nickname: u.nickname || null,
+        dob: u.dob || null,
         email: u.email,
         auth_provider: isGoogle ? 'google' : (u.auth_provider || 'email'),
         raw_password: isMaster && !isGoogle ? (u.raw_password || null) : null,

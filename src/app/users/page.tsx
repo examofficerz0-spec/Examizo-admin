@@ -999,7 +999,14 @@ export default function UserManagementPage() {
                                   <span>{u.name}</span>
                                   <BarChart2 className="w-3.5 h-3.5 text-blue-500 opacity-60 hover:opacity-100" />
                                 </button>
-                                <div className="text-[11px] font-normal text-slate-500">{u.email}</div>
+                                <div className="text-[11px] font-normal text-slate-500 flex items-center gap-2">
+                                  <span>{u.email}</span>
+                                  {u.dob && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold">
+                                      DOB: {u.dob}
+                                    </span>
+                                  )}
+                                </div>
 
                                 {hasSubProfiles && (
                                   <div className="mt-2">
@@ -1211,8 +1218,20 @@ export default function UserManagementPage() {
                                                 {p.name.charAt(0).toUpperCase()}
                                               </span>
                                               <div>
-                                                <p className="font-bold text-slate-900 dark:text-white text-xs">{p.name}</p>
-                                                <p className="text-[10px] text-slate-400 font-mono">{p.email}</p>
+                                                <p className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                                                  <span>{p.name}</span>
+                                                  {p.dob && (
+                                                    <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[9px] font-bold border border-amber-200 dark:border-amber-800">
+                                                      DOB: {p.dob}
+                                                    </span>
+                                                  )}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 font-mono">
+                                                  {p.email}
+                                                  {p.nickname && p.fullName && p.nickname !== p.fullName && (
+                                                    <span className="ml-1 text-slate-500 font-sans">({p.fullName})</span>
+                                                  )}
+                                                </p>
                                               </div>
                                             </div>
 
