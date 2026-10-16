@@ -111,6 +111,10 @@ export default function QuestionManagementPage() {
     { topic_tag: '', question_text: '', options: ['', '', '', ''], correct_option: 0, explanation: '' },
   ]);
   const [bulkError, setBulkError] = useState('');
+  const [bulkTargetTopic, setBulkTargetTopic] = useState<string>('__AUTO__');
+  const [isCreatingNewModule, setIsCreatingNewModule] = useState(false);
+  const [newModuleInput, setNewModuleInput] = useState('');
+  const [moduleSavedNotification, setModuleSavedNotification] = useState('');
   const [bulkUploadProgress, setBulkUploadProgress] = useState<{
     currentBatch: number;
     totalBatches: number;
@@ -203,6 +207,14 @@ export default function QuestionManagementPage() {
 
   useEffect(() => {
     fetchData();
+    try {
+      const savedSubs = localStorage.getItem('exam_portal_custom_subjects');
+      if (savedSubs) setCustomSubjects(JSON.parse(savedSubs));
+      const savedTopics = localStorage.getItem('exam_portal_custom_topics');
+      if (savedTopics) setCustomTopics(JSON.parse(savedTopics));
+    } catch (e) {
+      console.error('Failed to load custom subjects/topics from localStorage', e);
+    }
   }, []);
 
   // Compute Subjects & Topics dynamically from questions & custom lists
@@ -431,7 +443,7 @@ export default function QuestionManagementPage() {
   ).filter(Boolean);
 
   const allTopicNames = Array.from(
-    new Set([...extractedTopicsFromQuestions, ...userAddedTopics])
+    new Set(['Mixed', ...extractedTopicsFromQuestions, ...userAddedTopics])
   ).filter(Boolean);
 
   // If GK/GS, sort topics in canonical order
@@ -515,6 +527,32 @@ export default function QuestionManagementPage() {
     });
     setNewTopicName('');
     setShowTopicModal(false);
+  };
+
+  const handleSaveNewModuleFromBulk = () => {
+    const trimmed = newModuleInput.trim();
+    if (!trimmed) return;
+
+    const key = `${selectedCourseId}_${selectedSubject}`;
+    setCustomTopics((prev) => {
+      const existing = prev[key] || [];
+      const updated = {
+        ...prev,
+        [key]: Array.from(new Set([...existing, trimmed])),
+      };
+      try {
+        localStorage.setItem('exam_portal_custom_topics', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to save custom topics', err);
+      }
+      return updated;
+    });
+
+    setBulkTargetTopic(trimmed);
+    setIsCreatingNewModule(false);
+    setNewModuleInput('');
+    setModuleSavedNotification(`Topic module "${trimmed}" saved for future use!`);
+    setTimeout(() => setModuleSavedNotification(''), 4000);
   };
 
   const handleCreateQuestion = async (e: React.FormEvent) => {
@@ -1594,22 +1632,29 @@ export default function QuestionManagementPage() {
         const finalSub = resolveQSubject(q);
         
         let rawTopic = '';
-        if (q.topic && String(q.topic).trim()) {
-          rawTopic = String(q.topic).trim();
-        } else if (q.topic_tag && String(q.topic_tag).trim()) {
-          const t = String(q.topic_tag).trim();
-          if (t.includes('-')) {
-            rawTopic = t.split('-').slice(1).join('-').trim() || t.split('-')[0].trim();
-          } else {
-            rawTopic = t;
+        if (bulkTargetTopic && bulkTargetTopic !== '__AUTO__') {
+          // Explicitly assigned module from the modal dropdown or inline creator
+          rawTopic = bulkTargetTopic;
+        } else {
+          // Auto-detect from question/file
+          if (q.topic && String(q.topic).trim()) {
+            rawTopic = String(q.topic).trim();
+          } else if (q.topic_tag && String(q.topic_tag).trim()) {
+            const t = String(q.topic_tag).trim();
+            if (t.includes('-')) {
+              rawTopic = t.split('-').slice(1).join('-').trim() || t.split('-')[0].trim();
+            } else {
+              rawTopic = t;
+            }
           }
         }
+
         if (!rawTopic) {
-          rawTopic = selectedTopic || 'General Module';
+          rawTopic = selectedTopic || 'Mixed';
         }
         
         if (!rawTopic || ['general', 'general module'].includes(rawTopic.toLowerCase())) {
-          rawTopic = 'General Module';
+          rawTopic = 'Mixed';
         }
 
         // Clean subject prefix from rawTopic if repeated
@@ -1651,6 +1696,46 @@ export default function QuestionManagementPage() {
           subject: resolveQSubject(q),
           topic_tag: resolveQTopicTag(q),
         }));
+      }
+
+      // Automatically register the selected topic or all detected topics in customTopics for future use
+      const currentSubKey = `${selectedCourseId}_${selectedSubject}`;
+      if (bulkTargetTopic && bulkTargetTopic !== '__AUTO__') {
+        setCustomTopics((prev) => {
+          const existing = prev[currentSubKey] || [];
+          const updated = {
+            ...prev,
+            [currentSubKey]: Array.from(new Set([...existing, bulkTargetTopic])),
+          };
+          try {
+            localStorage.setItem('exam_portal_custom_topics', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+      } else {
+        const detectedTopics = Array.from(
+          new Set(
+            questionsToSubmit
+              .map((q) => {
+                const tag = q.topic_tag || '';
+                return tag.includes('-') ? tag.split('-').slice(1).join('-').trim() : tag;
+              })
+              .filter(Boolean)
+          )
+        );
+        if (detectedTopics.length > 0) {
+          setCustomTopics((prev) => {
+            const existing = prev[currentSubKey] || [];
+            const updated = {
+              ...prev,
+              [currentSubKey]: Array.from(new Set([...existing, ...detectedTopics])),
+            };
+            try {
+              localStorage.setItem('exam_portal_custom_topics', JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          });
+        }
       }
 
       // High-performance scalable chunk size (1000 questions per network batch)
@@ -2143,7 +2228,13 @@ export default function QuestionManagementPage() {
                         </button>
                       )}
                       <button
-                        onClick={() => setShowBulkModal(true)}
+                        onClick={() => {
+                          setBulkTargetTopic(selectedTopic || '__AUTO__');
+                          setIsCreatingNewModule(false);
+                          setNewModuleInput('');
+                          setModuleSavedNotification('');
+                          setShowBulkModal(true);
+                        }}
                         className="px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 rounded-lg flex items-center gap-1.5 shadow-xs hover:border-slate-400 cursor-pointer"
                       >
                         <Upload className="w-4 h-4 text-slate-700 dark:text-slate-300" /> + Bulk Upload
@@ -2235,8 +2326,14 @@ export default function QuestionManagementPage() {
                         <ArrowLeft className="w-4 h-4" /> Back to Topics
                       </button>
                       <button
-                        onClick={() => setShowBulkModal(true)}
-                        className="px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 rounded-lg flex items-center gap-1.5 shadow-xs"
+                        onClick={() => {
+                          setBulkTargetTopic(selectedTopic || 'Mixed');
+                          setIsCreatingNewModule(false);
+                          setNewModuleInput('');
+                          setModuleSavedNotification('');
+                          setShowBulkModal(true);
+                        }}
+                        className="px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer hover:border-slate-400"
                       >
                         <Upload className="w-4 h-4 text-slate-700" /> + Bulk Upload
                       </button>
@@ -2495,14 +2592,126 @@ export default function QuestionManagementPage() {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-2xl w-full shadow-lg my-8 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  Bulk Question Import: {selectedSubject} ➔ {selectedTopic || 'General'}
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  Bulk Question Import
                 </h3>
                 <p className="text-xs text-slate-500">Choose your preferred import method to build your question bank fast.</p>
               </div>
-              <button onClick={() => setShowBulkModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowBulkModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Target Subject & Topic Module Configuration Bar */}
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl p-3.5 mb-4 space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                {/* Subject Selector / Display */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    Subject (Pre-selected)
+                  </label>
+                  <div className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-extrabold text-slate-900 dark:text-white flex items-center justify-between shadow-2xs">
+                    <span className="flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      {selectedSubject || 'Science'}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                      Active
+                    </span>
+                  </div>
+                </div>
+
+                {/* Topic Module Selector with Inline Create */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      Target Topic Module
+                    </label>
+                    {!isCreatingNewModule && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewModule(true);
+                          setNewModuleInput('');
+                        }}
+                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-0.5 cursor-pointer"
+                        title="Add a new topic module name and save it for future use"
+                      >
+                        <Plus className="w-3 h-3" /> New Module
+                      </button>
+                    )}
+                  </div>
+
+                  {!isCreatingNewModule ? (
+                    <select
+                      value={bulkTargetTopic}
+                      onChange={(e) => {
+                        if (e.target.value === '__CREATE_NEW__') {
+                          setIsCreatingNewModule(true);
+                          setNewModuleInput('');
+                        } else {
+                          setBulkTargetTopic(e.target.value);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs cursor-pointer"
+                    >
+                      <option value="__AUTO__">✨ Auto-detect from File (Keep individual topics)</option>
+                      <option value="Mixed">📁 Mixed (General &amp; Cross-Topic)</option>
+                      {allTopicNames
+                        .filter((t) => t !== 'Mixed')
+                        .map((t) => (
+                          <option key={t} value={t}>
+                            📁 {t}
+                          </option>
+                        ))}
+                      <option value="__CREATE_NEW__">➕ + Add New Topic Module...</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={newModuleInput}
+                        onChange={(e) => setNewModuleInput(e.target.value)}
+                        placeholder="Enter module name (e.g. Light & Reflection)..."
+                        className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-blue-500 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveNewModuleFromBulk();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveNewModuleFromBulk}
+                        className="px-2.5 py-1.5 bg-[#0B192C] hover:bg-[#060E18] text-white font-bold rounded-lg text-xs shrink-0 cursor-pointer shadow-xs transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewModule(false);
+                          setNewModuleInput('');
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
+                        title="Cancel"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {moduleSavedNotification && (
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 p-2 rounded-lg border border-emerald-200 dark:border-emerald-800 animate-in fade-in duration-150">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                  <span>{moduleSavedNotification}</span>
+                </div>
+              )}
             </div>
 
             {/* Mode Switcher Tabs */}
@@ -2639,7 +2848,7 @@ export default function QuestionManagementPage() {
                             )}
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Target Topic: <strong className="text-slate-800 dark:text-slate-200">{selectedSubject}</strong> ➔ <strong className="text-slate-800 dark:text-slate-200">{selectedTopic || 'General'}</strong>
+                            Target Topic: <strong className="text-slate-800 dark:text-slate-200">{selectedSubject}</strong> ➔ <strong className="text-slate-800 dark:text-slate-200">{bulkTargetTopic === '__AUTO__' ? 'Auto-detect from file' : bulkTargetTopic}</strong>
                           </p>
                         </div>
                         <label className="cursor-pointer px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold rounded text-xs shrink-0 text-center">
@@ -2678,7 +2887,7 @@ export default function QuestionManagementPage() {
                           </div>
                           <h4 className="font-bold text-slate-900 dark:text-white text-sm">All Questions Already Exist</h4>
                           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
-                            All {excelTotalParsed} question(s) from &quot;{excelFileName}&quot; already exist in the database for <strong>{selectedSubject} ➔ {selectedTopic || 'General'}</strong>. No duplicate questions will be added.
+                            All {excelTotalParsed} question(s) from &quot;{excelFileName}&quot; already exist in the database for <strong>{selectedSubject} ➔ {bulkTargetTopic === '__AUTO__' ? 'Auto-detected Topics' : bulkTargetTopic}</strong>. No duplicate questions will be added.
                           </p>
                         </div>
                       ) : (
