@@ -215,18 +215,27 @@ export async function POST(req: Request) {
       }
 
       let d1Success = await executeD1(
-        'INSERT INTO users (id, name, email, password_hash, raw_password, auth_provider, status, xp_total, locked_course_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [newUserId, name, lowerEmail, password_hash, cleanPassword, 'email', 'Active', 0, locked_course_id || null]
+        'INSERT INTO users (id, name, full_name, email, account_email, password_hash, raw_password, auth_provider, status, xp_total, locked_course_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [newUserId, name, name, lowerEmail, lowerEmail, password_hash, cleanPassword, 'email', 'Active', 0, locked_course_id || null]
       );
 
       if (!d1Success) {
         d1Success = await executeD1(
-          'INSERT INTO users (id, name, email, password_hash, status, xp_total, locked_course_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [newUserId, name, lowerEmail, password_hash, 'Active', 0, locked_course_id || null]
+          'INSERT INTO users (id, name, full_name, email, account_email, password_hash, status, xp_total, locked_course_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [newUserId, name, name, lowerEmail, lowerEmail, password_hash, 'Active', 0, locked_course_id || null]
         );
       }
 
       if (d1Success) {
+        try {
+          await executeD1(
+            `INSERT OR REPLACE INTO sub_profiles (
+              id, parent_user_id, parent_email, name, full_name, nickname, dob, pin, avatar_color, locked_course_id, xp_total, status, is_primary
+            ) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'bg-blue-600', ?, 0, 'Active', 1)`,
+            [newUserId, newUserId, lowerEmail, name, name, locked_course_id || null]
+          );
+        } catch (_) {}
+
         // Mirror to sharedDb
         try {
           const db = readSharedDb();
@@ -235,13 +244,33 @@ export async function POST(req: Request) {
             _id: newUserId,
             id: newUserId,
             name,
+            full_name: name,
             email: lowerEmail,
+            account_email: lowerEmail,
             password_hash,
             raw_password: cleanPassword,
             auth_provider: 'email',
             status: 'Active',
             xp_total: 0,
             locked_course_id: locked_course_id || null,
+            created_at: new Date().toISOString(),
+          });
+          if (!db.sub_profiles) db.sub_profiles = [];
+          db.sub_profiles.push({
+            id: newUserId,
+            _id: newUserId,
+            parent_user_id: newUserId,
+            parent_email: lowerEmail,
+            name,
+            full_name: name,
+            nickname: null,
+            dob: null,
+            pin: null,
+            avatar_color: 'bg-blue-600',
+            locked_course_id: locked_course_id || null,
+            xp_total: 0,
+            status: 'Active',
+            is_primary: 1,
             created_at: new Date().toISOString(),
           });
           writeSharedDb(db);
@@ -278,7 +307,9 @@ export async function POST(req: Request) {
       _id: newUserId,
       id: newUserId,
       name,
+      full_name: name,
       email: lowerEmail,
+      account_email: lowerEmail,
       password_hash,
       raw_password: cleanPassword,
       auth_provider: 'email',
@@ -289,6 +320,24 @@ export async function POST(req: Request) {
     };
 
     db.users.unshift(newUser);
+    if (!db.sub_profiles) db.sub_profiles = [];
+    db.sub_profiles.push({
+      id: newUserId,
+      _id: newUserId,
+      parent_user_id: newUserId,
+      parent_email: lowerEmail,
+      name,
+      full_name: name,
+      nickname: null,
+      dob: null,
+      pin: null,
+      avatar_color: 'bg-blue-600',
+      locked_course_id: locked_course_id || null,
+      xp_total: 0,
+      status: 'Active',
+      is_primary: 1,
+      created_at: new Date().toISOString(),
+    });
 
     if (!db.auditLogs) db.auditLogs = [];
     db.auditLogs.unshift({

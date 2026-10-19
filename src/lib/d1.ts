@@ -106,35 +106,233 @@ export async function executeD1(sql: string, params: any[] = []): Promise<boolea
   }
 }
 
-let d1ColumnsChecked = false;
-export async function ensureD1Columns() {
-  if (d1ColumnsChecked) return;
-  d1ColumnsChecked = true;
-  Promise.allSettled([
-    executeD1('ALTER TABLE admins ADD COLUMN raw_password TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN full_name TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN nickname TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN dob TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN locked_course_id TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN previous_course_id TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN raw_password TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN auth_provider TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN account_email TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN pin TEXT'),
-    executeD1('ALTER TABLE users ADD COLUMN avatar_color TEXT'),
-    executeD1("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Active'"),
-    executeD1('ALTER TABLE users ADD COLUMN xp_total INTEGER DEFAULT 0'),
-    executeD1("ALTER TABLE users ADD COLUMN friends_json TEXT DEFAULT '[]'"),
-    executeD1("ALTER TABLE users ADD COLUMN friend_requests_json TEXT DEFAULT '[]'"),
-    executeD1('ALTER TABLE users ADD COLUMN digilocker_verified INTEGER DEFAULT 0'),
-    executeD1("ALTER TABLE users ADD COLUMN digilocker_profile_json TEXT DEFAULT '{}'"),
-    executeD1("ALTER TABLE users ADD COLUMN digilocker_raw_response_json TEXT DEFAULT '{}'"),
-    executeD1('ALTER TABLE users ADD COLUMN updated_at TEXT'),
-    executeD1('ALTER TABLE courses ADD COLUMN board TEXT DEFAULT "CBSE"'),
-    executeD1('ALTER TABLE courses ADD COLUMN curriculum TEXT DEFAULT ""'),
-    executeD1('ALTER TABLE courses ADD COLUMN subjects_json TEXT DEFAULT "[]"'),
-    executeD1('ALTER TABLE courses ADD COLUMN marks_per_correct REAL DEFAULT 4.0'),
-    executeD1('ALTER TABLE courses ADD COLUMN penalty_per_incorrect REAL DEFAULT 1.0'),
-    executeD1('ALTER TABLE courses ADD COLUMN is_active INTEGER DEFAULT 1'),
-  ]).catch(() => {});
+let d1TablesChecked = false;
+export async function ensureD1Tables() {
+  if (d1TablesChecked) return;
+  d1TablesChecked = true;
+
+  try {
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT,
+        raw_password TEXT,
+        full_name TEXT,
+        nickname TEXT,
+        dob TEXT,
+        status TEXT DEFAULT 'Active',
+        xp_total INTEGER DEFAULT 0,
+        locked_course_id TEXT,
+        previous_course_id TEXT,
+        auth_provider TEXT,
+        account_email TEXT,
+        pin TEXT,
+        avatar_color TEXT,
+        friends_json TEXT DEFAULT '[]',
+        friend_requests_json TEXT DEFAULT '[]',
+        digilocker_verified INTEGER DEFAULT 0,
+        digilocker_profile_json TEXT DEFAULT '{}',
+        digilocker_raw_response_json TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS sub_profiles (
+        id TEXT PRIMARY KEY,
+        parent_user_id TEXT NOT NULL,
+        parent_email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        full_name TEXT,
+        nickname TEXT,
+        dob TEXT,
+        pin TEXT,
+        avatar_color TEXT DEFAULT 'bg-blue-600',
+        locked_course_id TEXT,
+        xp_total INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'Active',
+        is_primary INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS mistake_logs (
+        id TEXT PRIMARY KEY,
+        sub_profile_id TEXT NOT NULL,
+        student_id TEXT NOT NULL,
+        course_id TEXT NOT NULL,
+        test_id TEXT,
+        question_id TEXT NOT NULL,
+        selected_option INTEGER,
+        correct_option INTEGER NOT NULL,
+        is_resolved INTEGER DEFAULT 0,
+        attempt_type TEXT DEFAULT 'practice',
+        attempted_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS attempts (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        sub_profile_id TEXT,
+        course_id TEXT NOT NULL,
+        test_id TEXT,
+        type TEXT DEFAULT 'practice',
+        topic_tag TEXT,
+        responses_json TEXT DEFAULT '[]',
+        score REAL DEFAULT 0,
+        accuracy REAL DEFAULT 0,
+        time_spent_seconds INTEGER DEFAULT 0,
+        submission_type TEXT DEFAULT 'manual',
+        started_at TEXT DEFAULT (datetime('now')),
+        submitted_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS xp_transactions (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        sub_profile_id TEXT,
+        attempt_id TEXT,
+        xp_amount INTEGER NOT NULL,
+        reason TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS mock_tests (
+        id TEXT PRIMARY KEY,
+        course_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        type TEXT DEFAULT 'full',
+        duration_minutes INTEGER DEFAULT 60,
+        cutoff_marks INTEGER DEFAULT 0,
+        question_ids_json TEXT DEFAULT '[]',
+        preset_id TEXT,
+        is_dynamic_reshuffle INTEGER DEFAULT 0,
+        subject_allocations_json TEXT DEFAULT '{}',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS questions (
+        id TEXT PRIMARY KEY,
+        course_id TEXT NOT NULL,
+        question_text TEXT NOT NULL,
+        options_json TEXT DEFAULT '[]',
+        correct_option INTEGER NOT NULL,
+        explanation TEXT,
+        detailed_explanation TEXT,
+        topic_tag TEXT,
+        subject TEXT,
+        marks REAL DEFAULT 1,
+        image_url TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT,
+        board TEXT DEFAULT 'CBSE',
+        curriculum TEXT DEFAULT '',
+        subjects_json TEXT DEFAULT '[]',
+        marks_per_correct REAL DEFAULT 4.0,
+        penalty_per_incorrect REAL DEFAULT 1.0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS weekly_dpps (
+        id TEXT PRIMARY KEY,
+        course_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        week_number INTEGER DEFAULT 1,
+        question_ids_json TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS resources (
+        id TEXT PRIMARY KEY,
+        course_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        type TEXT DEFAULT 'pdf',
+        file_url TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT DEFAULT 'info',
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    // Ensure all critical columns exist even if table was pre-created with an older schema
+    await Promise.allSettled([
+      executeD1('ALTER TABLE admins ADD COLUMN raw_password TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN full_name TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN nickname TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN dob TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN locked_course_id TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN previous_course_id TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN raw_password TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN auth_provider TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN account_email TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN pin TEXT'),
+      executeD1('ALTER TABLE users ADD COLUMN avatar_color TEXT'),
+      executeD1("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Active'"),
+      executeD1('ALTER TABLE users ADD COLUMN xp_total INTEGER DEFAULT 0'),
+      executeD1("ALTER TABLE users ADD COLUMN friends_json TEXT DEFAULT '[]'"),
+      executeD1("ALTER TABLE users ADD COLUMN friend_requests_json TEXT DEFAULT '[]'"),
+      executeD1('ALTER TABLE users ADD COLUMN digilocker_verified INTEGER DEFAULT 0'),
+      executeD1("ALTER TABLE users ADD COLUMN digilocker_profile_json TEXT DEFAULT '{}'"),
+      executeD1("ALTER TABLE users ADD COLUMN digilocker_raw_response_json TEXT DEFAULT '{}'"),
+      executeD1('ALTER TABLE users ADD COLUMN updated_at TEXT'),
+      executeD1('ALTER TABLE courses ADD COLUMN board TEXT DEFAULT "CBSE"'),
+      executeD1('ALTER TABLE courses ADD COLUMN curriculum TEXT DEFAULT ""'),
+      executeD1('ALTER TABLE courses ADD COLUMN subjects_json TEXT DEFAULT "[]"'),
+      executeD1('ALTER TABLE courses ADD COLUMN marks_per_correct REAL DEFAULT 4.0'),
+      executeD1('ALTER TABLE courses ADD COLUMN penalty_per_incorrect REAL DEFAULT 1.0'),
+      executeD1('ALTER TABLE courses ADD COLUMN is_active INTEGER DEFAULT 1'),
+      executeD1('ALTER TABLE attempts ADD COLUMN sub_profile_id TEXT'),
+      executeD1('ALTER TABLE xp_transactions ADD COLUMN sub_profile_id TEXT'),
+      executeD1('ALTER TABLE questions ADD COLUMN subject TEXT'),
+      executeD1('ALTER TABLE questions ADD COLUMN image_url TEXT'),
+      executeD1('ALTER TABLE questions ADD COLUMN detailed_explanation TEXT'),
+    ]).catch(() => {});
+  } catch (_) {}
 }
+
+export const ensureD1Columns = ensureD1Tables;
