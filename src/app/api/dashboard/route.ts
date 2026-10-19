@@ -9,12 +9,21 @@ export async function GET() {
   try {
     // 1. Primary: Cloudflare D1
     try {
-      const usersCountRes = await queryD1("SELECT COUNT(*) as total FROM users WHERE status != 'Deleted'");
-      const questionsCountRes = await queryD1("SELECT COUNT(*) as total FROM questions WHERE is_active = 1");
-      const coursesCountRes = await queryD1("SELECT COUNT(*) as total FROM courses WHERE is_active = 1");
-      const testsCountRes = await queryD1("SELECT COUNT(*) as total FROM mock_tests WHERE is_active = 1");
-      const attemptsRes = await queryD1("SELECT * FROM attempts ORDER BY submitted_at DESC");
-      const logsRes = await queryD1("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 5");
+      const [
+        usersCountRes,
+        questionsCountRes,
+        coursesCountRes,
+        testsCountRes,
+        attemptsRes,
+        logsRes,
+      ] = await Promise.all([
+        queryD1("SELECT COUNT(*) as total FROM users WHERE status != 'Deleted'"),
+        queryD1("SELECT COUNT(*) as total FROM questions WHERE is_active = 1"),
+        queryD1("SELECT COUNT(*) as total FROM courses WHERE is_active = 1"),
+        queryD1("SELECT COUNT(*) as total FROM mock_tests WHERE is_active = 1"),
+        queryD1("SELECT id, score, responses_json, submitted_at, started_at, created_at FROM attempts ORDER BY submitted_at DESC"),
+        queryD1("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 5"),
+      ]);
 
       if (usersCountRes && questionsCountRes && coursesCountRes) {
         const totalStudents = usersCountRes[0]?.total || 0;
