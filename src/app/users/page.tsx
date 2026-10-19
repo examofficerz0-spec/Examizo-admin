@@ -214,7 +214,7 @@ export default function UserManagementPage() {
     if (email.includes('+')) {
       const [local, domain] = email.split('@');
       const baseLocal = local.split('+')[0];
-      if (domain.includes('exammaster.internal') || domain.includes('internal')) {
+      if (domain.includes('examizo.internal') || domain.includes('exammaster.internal') || domain.includes('internal')) {
         return `${baseLocal}@gmail.com`;
       }
       return `${baseLocal}@${domain}`;
@@ -1915,7 +1915,7 @@ export default function UserManagementPage() {
                     disabled={!!editingAdmin}
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
-                    placeholder="sarah@exammaster.com"
+                    placeholder="sarah@examizo.com"
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white disabled:opacity-60 font-mono"
                   />
                 </div>
