@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readSharedDb } from '@/lib/sharedDb';
 import { queryD1 } from '@/lib/d1';
+import { resolveLeaderboardCohort, isUserInCohort } from '@/lib/cohortMatcher';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -17,15 +18,28 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       const d1Users = await queryD1('SELECT * FROM users WHERE id = ? OR email = ? LIMIT 1', [studentId, studentId]);
       if (d1Users && d1Users.length > 0) {
         const u = d1Users[0];
-        const d1Courses = await queryD1('SELECT * FROM courses');
+        const d1Courses = (await queryD1('SELECT id, name, category, board, curriculum FROM courses')) || [];
         const course = d1Courses.find((c: any) => String(c.id) === String(u.locked_course_id) || String(c._id) === String(u.locked_course_id));
+        const cohort = resolveLeaderboardCohort(course || u.locked_course_id, d1Courses);
 
-        const courseStudents = await queryD1(
-          "SELECT id, email, xp_total FROM users WHERE status != 'Deleted' AND (locked_course_id = ? OR ? IS NULL) ORDER BY xp_total DESC",
-          [u.locked_course_id, u.locked_course_id]
+        const allActiveUsers = await queryD1(
+          "SELECT id, email, xp_total, locked_course_id, created_at FROM users WHERE status != 'Deleted'"
         );
-        const rankIndex = (courseStudents || []).findIndex((st: any) => String(st.id) === String(u.id) || String(st.email) === String(u.email));
-        const rank = rankIndex !== -1 ? rankIndex + 1 : 1;
+        const cohortStudents = (allActiveUsers || [])
+          .filter((usr: any) => isUserInCohort(usr.locked_course_id, cohort, d1Courses))
+          .sort((a: any, b: any) => {
+            const xpDiff = Number(b.xp_total || 0) - Number(a.xp_total || 0);
+            if (xpDiff !== 0) return xpDiff;
+            return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+          });
+
+        const rankIndex = (cohortStudents || []).findIndex((st: any) => String(st.id) === String(u.id) || String(st.email) === String(u.email));
+        let rank = rankIndex !== -1 ? rankIndex + 1 : 1;
+        if (rankIndex === -1) {
+          const selfXp = Number(u.xp_total || 0);
+          const higherCount = cohortStudents.filter((st: any) => Number(st.xp_total || 0) > selfXp).length;
+          rank = higherCount + 1;
+        }
 
         const d1Attempts = await queryD1(
           'SELECT * FROM attempts WHERE (student_id = ? OR student_id = ?) ORDER BY started_at DESC',
@@ -126,7 +140,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
             status: u.status || 'Active',
             lockedCourseName: course ? course.name : 'Unassigned Track',
             rank,
-            totalStudentsInBatch: (courseStudents || []).length,
+            totalStudentsInBatch: cohortStudents.length,
           },
           stats: {
             mockTestsAttempted: mockAttempts.length,
@@ -151,15 +165,21 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
 
-    const course = (db.courses || []).find((c) => String(c._id) === String(user.locked_course_id) || String(c.id) === String(user.locked_course_id));
-    const userCourseId = user.locked_course_id ? String(user.locked_course_id) : null;
+    const fallbackCourses = db.courses || [];
+    const course = fallbackCourses.find((c) => String(c._id) === String(user.locked_course_id) || String(c.id) === String(user.locked_course_id));
+    const fallbackCohort = resolveLeaderboardCohort(course || user.locked_course_id, fallbackCourses);
 
-    const courseStudents = (db.users || [])
-      .filter((u) => u.status !== 'Deleted' && (userCourseId ? String(u.locked_course_id) === userCourseId : true))
+    const cohortStudents = (db.users || [])
+      .filter((u) => u.status !== 'Deleted' && isUserInCohort(u.locked_course_id, fallbackCohort, fallbackCourses))
       .sort((a, b) => (b.xp_total || 0) - (a.xp_total || 0));
 
-    const rankIndex = courseStudents.findIndex((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
-    const rank = rankIndex !== -1 ? rankIndex + 1 : 1;
+    const rankIndex = cohortStudents.findIndex((u) => String(u._id) === String(studentId) || String(u.id) === String(studentId));
+    let rank = rankIndex !== -1 ? rankIndex + 1 : 1;
+    if (rankIndex === -1) {
+      const selfXp = Number(user.xp_total || 0);
+      const higherCount = cohortStudents.filter((st: any) => Number(st.xp_total || 0) > selfXp).length;
+      rank = higherCount + 1;
+    }
 
     const attempts = (db.attempts || []).filter((a) => String(a.user_id || a.student_id) === String(studentId));
 
@@ -190,7 +210,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         status: user.status || 'Active',
         lockedCourseName: course?.name || 'Unassigned Track',
         rank,
-        totalStudentsInBatch: courseStudents.length,
+        totalStudentsInBatch: cohortStudents.length,
       },
       stats: {
         mockTestsAttempted: mockAttempts.length,
