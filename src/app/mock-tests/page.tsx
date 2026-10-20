@@ -2096,7 +2096,7 @@ export default function MockTestManagementPage() {
                         )}
 
                         {(q.explanation || q.detailed_explanation) && (
-                          <div className="mt-2 p-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+                          <div className="mt-2 p-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words leading-relaxed font-mono">
                             <strong>Explanation: </strong> {q.explanation || q.detailed_explanation}
                           </div>
                         )}

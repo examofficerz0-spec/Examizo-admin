@@ -3548,7 +3548,7 @@ export default function QuestionManagementPage() {
       {/* Single Add Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-md w-full shadow-lg my-8">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 max-w-2xl w-full shadow-lg my-8">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 {editingQuestionId ? 'Edit Question' : 'Add Question'} under {selectedSubject} ➔ {selectedTopic}
@@ -3738,14 +3738,24 @@ export default function QuestionManagementPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Detailed / Step-by-Step Explanation (Optional)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                    Detailed / Step-by-Step Explanation (Optional)
+                  </label>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    {detailedExplanation ? `${detailedExplanation.split('\n').filter(Boolean).length} line(s)` : 'Supports 15–20+ lines'}
+                  </span>
+                </div>
                 <textarea
-                  rows={4}
+                  rows={6}
                   value={detailedExplanation}
                   onChange={(e) => setDetailedExplanation(e.target.value)}
-                  placeholder="Comprehensive step-by-step solution, formulas, and detailed derivation..."
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  placeholder={"Step 1: State given values...\nStep 2: Apply the governing formula...\nStep 3: Substitute values and calculate...\n...\nStep 15: Conclude final answer with appropriate units."}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono text-xs leading-relaxed resize-y min-h-[140px]"
                 />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  💡 In student portal, this dynamically increases its height to comfortably fit 15–20+ lines without clipping.
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
