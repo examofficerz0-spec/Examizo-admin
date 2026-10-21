@@ -299,6 +299,61 @@ export async function ensureD1Tables() {
       )
     `);
 
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS mock_test_sessions (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        sub_profile_id TEXT,
+        test_id TEXT NOT NULL,
+        course_id TEXT,
+        status TEXT DEFAULT 'in_progress',
+        resume_count INTEGER DEFAULT 1,
+        focus_violation_count INTEGER DEFAULT 0,
+        time_left_seconds INTEGER DEFAULT 0,
+        current_question_index INTEGER DEFAULT 0,
+        user_responses_json TEXT DEFAULT '{}',
+        question_order_json TEXT DEFAULT '[]',
+        active_language TEXT DEFAULT 'en',
+        is_practice_retake INTEGER DEFAULT 0,
+        started_at TEXT DEFAULT (datetime('now')),
+        last_active_at TEXT DEFAULT (datetime('now')),
+        submitted_at TEXT
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS battle_rooms (
+        id TEXT PRIMARY KEY,
+        challenger_id TEXT NOT NULL,
+        challenger_name TEXT,
+        opponent_id TEXT NOT NULL,
+        opponent_name TEXT,
+        status TEXT DEFAULT 'waiting',
+        course_id TEXT,
+        question_ids_json TEXT DEFAULT '[]',
+        questions_data_json TEXT DEFAULT '[]',
+        current_question INTEGER DEFAULT 0,
+        challenger_answers_json TEXT DEFAULT '{}',
+        opponent_answers_json TEXT DEFAULT '{}',
+        challenger_score INTEGER DEFAULT 0,
+        opponent_score INTEGER DEFAULT 0,
+        challenger_ready INTEGER DEFAULT 0,
+        opponent_ready INTEGER DEFAULT 0,
+        winner_id TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT,
+        completed_at TEXT
+      )
+    `);
+
+    await executeD1(`
+      CREATE TABLE IF NOT EXISTS user_online_status (
+        user_id TEXT PRIMARY KEY,
+        last_heartbeat TEXT DEFAULT (datetime('now')),
+        is_online INTEGER DEFAULT 0
+      )
+    `);
+
     // Ensure all critical columns exist even if table was pre-created with an older schema
     await Promise.allSettled([
       executeD1('ALTER TABLE admins ADD COLUMN raw_password TEXT'),
@@ -344,7 +399,14 @@ export async function ensureD1Tables() {
       executeD1('CREATE INDEX IF NOT EXISTS idx_weekly_dpps_course ON weekly_dpps(course_id)'),
       executeD1('CREATE INDEX IF NOT EXISTS idx_resources_course ON resources(course_id)'),
       executeD1('CREATE INDEX IF NOT EXISTS idx_users_locked_course ON users(locked_course_id)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_sessions_student_test ON mock_test_sessions(student_id, test_id)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_sessions_status ON mock_test_sessions(status)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_battle_rooms_challenger ON battle_rooms(challenger_id, status)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_battle_rooms_opponent ON battle_rooms(opponent_id, status)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_battle_rooms_status ON battle_rooms(status)'),
+      executeD1('CREATE INDEX IF NOT EXISTS idx_user_online_heartbeat ON user_online_status(last_heartbeat)'),
     ]).catch(() => {});
+
   } catch (_) {}
 }
 

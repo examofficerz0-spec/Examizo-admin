@@ -190,13 +190,116 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 12. Dedicated Sub-Profiles (Multi-Profile Academic Hub)
+CREATE TABLE IF NOT EXISTS sub_profiles (
+  id TEXT PRIMARY KEY,
+  parent_user_id TEXT NOT NULL,
+  parent_email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  full_name TEXT,
+  nickname TEXT,
+  dob TEXT,
+  pin TEXT DEFAULT NULL,
+  avatar_color TEXT DEFAULT 'bg-blue-600',
+  locked_course_id TEXT DEFAULT NULL,
+  xp_total INTEGER DEFAULT 0,
+  status TEXT CHECK(status IN ('Active', 'Suspended', 'Deleted')) DEFAULT 'Active',
+  is_primary INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (parent_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (locked_course_id) REFERENCES courses(id) ON DELETE SET NULL
+);
+
+-- 13. Granular Mistake Log & Incorrect Answers Audit
+CREATE TABLE IF NOT EXISTS mistake_logs (
+  id TEXT PRIMARY KEY,
+  sub_profile_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  test_id TEXT DEFAULT NULL,
+  question_id TEXT NOT NULL,
+  selected_option INTEGER DEFAULT NULL,
+  correct_option INTEGER NOT NULL,
+  is_resolved INTEGER DEFAULT 0,
+  attempt_type TEXT CHECK(attempt_type IN ('mock', 'practice', 'weekly')) DEFAULT 'practice',
+  attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sub_profile_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+
+-- 14. Real-time Mock Test Sessions (Stateful Proctoring & Resumption)
+CREATE TABLE IF NOT EXISTS mock_test_sessions (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  sub_profile_id TEXT,
+  test_id TEXT NOT NULL,
+  course_id TEXT,
+  status TEXT DEFAULT 'in_progress',
+  resume_count INTEGER DEFAULT 1,
+  focus_violation_count INTEGER DEFAULT 0,
+  time_left_seconds INTEGER DEFAULT 0,
+  current_question_index INTEGER DEFAULT 0,
+  user_responses_json TEXT DEFAULT '{}',
+  question_order_json TEXT DEFAULT '[]',
+  active_language TEXT DEFAULT 'en',
+  is_practice_retake INTEGER DEFAULT 0,
+  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  submitted_at DATETIME
+);
+
+-- 15. Real-time 1v1 Battle Arena Rooms
+CREATE TABLE IF NOT EXISTS battle_rooms (
+  id TEXT PRIMARY KEY,
+  challenger_id TEXT NOT NULL,
+  challenger_name TEXT,
+  opponent_id TEXT NOT NULL,
+  opponent_name TEXT,
+  status TEXT DEFAULT 'waiting',
+  course_id TEXT,
+  question_ids_json TEXT DEFAULT '[]',
+  questions_data_json TEXT DEFAULT '[]',
+  current_question INTEGER DEFAULT 0,
+  challenger_answers_json TEXT DEFAULT '{}',
+  opponent_answers_json TEXT DEFAULT '{}',
+  challenger_score INTEGER DEFAULT 0,
+  opponent_score INTEGER DEFAULT 0,
+  challenger_ready INTEGER DEFAULT 0,
+  opponent_ready INTEGER DEFAULT 0,
+  winner_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME,
+  completed_at DATETIME
+);
+
+-- 16. User Online Presence Status
+CREATE TABLE IF NOT EXISTS user_online_status (
+  user_id TEXT PRIMARY KEY,
+  last_heartbeat DATETIME DEFAULT CURRENT_TIMESTAMP,
+  is_online INTEGER DEFAULT 0
+);
+
 -- Indexes for lightning fast queries & edge performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_account_email ON users(account_email);
 CREATE INDEX IF NOT EXISTS idx_users_locked_course ON users(locked_course_id);
+CREATE INDEX IF NOT EXISTS idx_sub_profiles_parent ON sub_profiles(parent_user_id);
+CREATE INDEX IF NOT EXISTS idx_sub_profiles_parent_email ON sub_profiles(parent_email);
+CREATE INDEX IF NOT EXISTS idx_sub_profiles_course ON sub_profiles(locked_course_id);
 CREATE INDEX IF NOT EXISTS idx_questions_course_id ON questions(course_id);
 CREATE INDEX IF NOT EXISTS idx_questions_topic ON questions(topic_tag);
 CREATE INDEX IF NOT EXISTS idx_mock_tests_course ON mock_tests(course_id);
 CREATE INDEX IF NOT EXISTS idx_weekly_dpps_course ON weekly_dpps(course_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_student ON attempts(student_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_course ON attempts(course_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_sub_profile ON attempts(student_id, course_id);
+CREATE INDEX IF NOT EXISTS idx_mistake_logs_sub_profile ON mistake_logs(sub_profile_id, is_resolved);
+CREATE INDEX IF NOT EXISTS idx_mistake_logs_test ON mistake_logs(test_id, question_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_student_test ON mock_test_sessions(student_id, test_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON mock_test_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_battle_rooms_challenger ON battle_rooms(challenger_id, status);
+CREATE INDEX IF NOT EXISTS idx_battle_rooms_opponent ON battle_rooms(opponent_id, status);
+CREATE INDEX IF NOT EXISTS idx_battle_rooms_status ON battle_rooms(status);
+CREATE INDEX IF NOT EXISTS idx_user_online_heartbeat ON user_online_status(last_heartbeat);
