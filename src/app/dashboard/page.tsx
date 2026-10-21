@@ -99,6 +99,39 @@ export default function AdminDashboardPage() {
 
   const maxAttemptsInSlot = Math.max(...hourlyData.map((d) => d.count || 0), 1);
 
+  const handleExportReport = () => {
+    const lines = [
+      'EXAMIZO OPERATIONAL ANALYTICS REPORT',
+      `Generated At,${new Date().toISOString()}`,
+      '',
+      'SYSTEM METRICS',
+      `Total Questions,${metrics.totalQuestions}`,
+      `Active Courses,${metrics.activeCourses}`,
+      `Active Mock Tests,${metrics.activeMockTests}`,
+      `Total Student Attempts,${metrics.totalAttempts}`,
+      `Overall Pass Rate,${metrics.passRate}`,
+      '',
+      'HOURLY ENGAGEMENT ACTIVITY',
+      'Time Slot,Attempts Count',
+      ...hourlyData.map((d) => `"${d.label || d.hour || ''}",${d.count || 0}`),
+      '',
+      'RECENT SYSTEM AUDIT LOGS',
+      'Timestamp,Action,Admin,Details',
+      ...logs.map(
+        (l) =>
+          `"${l.timestamp || l.created_at || ''}","${(l.action || '').replace(/"/g, '""')}","${(l.admin_name || l.admin_email || 'System').replace(/"/g, '""')}","${(l.details || '').replace(/"/g, '""')}"`
+      ),
+    ];
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
+    const link = document.createElement('a');
+    link.setAttribute('href', csvContent);
+    link.setAttribute('download', `Examizo_Operational_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
       <AdminSidebar />
@@ -127,9 +160,9 @@ export default function AdminDashboardPage() {
               </button>
 
               <button
-                onClick={() => alert('Exporting operational analytics report...')}
+                onClick={handleExportReport}
                 type="button"
-                className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-extrabold rounded-lg flex items-center gap-2 shadow-xs transition-colors"
+                className="px-4 py-2 bg-[#0B192C] hover:bg-[#060E18] text-white text-xs font-extrabold rounded-lg flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export Report
