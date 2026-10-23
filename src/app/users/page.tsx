@@ -1797,7 +1797,7 @@ export default function UserManagementPage() {
                   required
                   value={studentName}
                   onChange={(e) => setStudentName(e.target.value)}
-                  placeholder="e.g. John Doe"
+                  placeholder="Your name"
                   className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                 />
               </div>
@@ -1902,7 +1902,7 @@ export default function UserManagementPage() {
                     required
                     value={adminName}
                     onChange={(e) => setAdminName(e.target.value)}
-                    placeholder="e.g. Sarah Jenkins"
+                    placeholder="Your name"
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                   />
                 </div>
@@ -1915,7 +1915,7 @@ export default function UserManagementPage() {
                     disabled={!!editingAdmin}
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
-                    placeholder="sarah@examizo.com"
+                    placeholder="admin@examizo.com"
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white disabled:opacity-60 font-mono"
                   />
                 </div>
