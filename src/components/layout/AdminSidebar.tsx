@@ -20,12 +20,15 @@ import {
   Shield,
 } from 'lucide-react';
 import { hasPermission, isSuperAdmin, getRoleBadgeClass, getAuthAdminFromCookie, setCachedAuthAdmin } from '@/lib/permissions';
+import { SignOutConfirmModal } from '../common/SignOutConfirmModal';
 
 export const AdminSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adminInfo, setAdminInfo] = useState<any>(getAuthAdminFromCookie);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     const handleToggle = () => setMobileOpen((prev) => !prev);
@@ -55,6 +58,7 @@ export const AdminSidebar: React.FC = () => {
   }, []);
 
   const handleLogout = async () => {
+    setIsSigningOut(true);
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {}
@@ -155,7 +159,7 @@ export const AdminSidebar: React.FC = () => {
 
       <div className="p-5 border-t border-slate-200 dark:border-slate-800">
         <button
-          onClick={handleLogout}
+          onClick={() => setShowSignOutModal(true)}
           type="button"
           className="flex items-center gap-2.5 text-xs font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 transition-colors w-full px-3.5 py-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
         >
@@ -185,6 +189,14 @@ export const AdminSidebar: React.FC = () => {
           </aside>
         </div>
       )}
+
+      {/* Global Sign Out Confirmation Modal */}
+      <SignOutConfirmModal
+        isOpen={showSignOutModal}
+        onClose={() => setShowSignOutModal(false)}
+        onConfirm={handleLogout}
+        isSigningOut={isSigningOut}
+      />
     </>
   );
 };
