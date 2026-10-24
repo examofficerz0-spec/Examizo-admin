@@ -32,15 +32,80 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
   variant = 'crest',
   onFlightComplete,
 }) => {
-  const [flightState, setFlightState] = useState<'resting' | 'gust' | 'flying' | 'landing'>('resting');
-  const [animTime, setAnimTime] = useState(0);
+  const [wingState, setWingState] = useState<'idle' | 'flapping' | 'landing'>('idle');
+  const [showWind, setShowWind] = useState(false);
+  const butterflyRef = useRef<SVGGElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(performance.now());
   const isPlayingRef = useRef(autoLoop);
+  const animTimeRef = useRef(0);
+  const lastWingStateRef = useRef<'idle' | 'flapping' | 'landing'>('idle');
+  const lastWindRef = useRef(false);
+
+  const calculateTransform = (time: number) => {
+    const tNorm = (time % 9.0) / 9.0;
+    let x = 0;
+    let y = 0;
+    let scale = 1;
+    let rotate = 0;
+    let isFlapping = false;
+    let isLandingUnfold = false;
+    let windActive = false;
+
+    if (tNorm < 0.22) {
+      x = 0;
+      y = 0;
+      scale = 1;
+      rotate = 0;
+      isFlapping = false;
+      isLandingUnfold = false;
+      windActive = false;
+    } else if (tNorm < 0.32) {
+      const p = (tNorm - 0.22) / 0.10;
+      x = Math.sin(p * Math.PI) * 10;
+      y = -p * 24;
+      scale = 1 + p * 0.05;
+      rotate = p * 8;
+      isFlapping = true;
+      isLandingUnfold = false;
+      windActive = true;
+    } else if (tNorm < 0.72) {
+      const p = (tNorm - 0.32) / 0.40;
+      const angle = p * Math.PI * 2;
+      x = Math.sin(angle) * 165 + Math.cos(angle * 2) * 35;
+      y = -135 - Math.sin(angle) * 75 + Math.sin(angle * 3) * 20;
+      scale = 0.84 + Math.sin(angle + Math.PI / 2) * 0.22;
+      rotate = Math.cos(angle) * 26;
+      isFlapping = true;
+      isLandingUnfold = false;
+      windActive = true;
+    } else if (tNorm < 0.88) {
+      const p = (tNorm - 0.72) / 0.16;
+      const ease = 1 - Math.pow(1 - p, 3);
+      x = 65 * (1 - ease);
+      y = -120 * (1 - ease);
+      scale = 0.88 + ease * 0.12;
+      rotate = 16 * (1 - ease);
+      isFlapping = p < 0.45;
+      isLandingUnfold = p >= 0.45;
+      windActive = p < 0.55;
+    }
+
+    return { x, y, scale, rotate, isFlapping, isLandingUnfold, windActive };
+  };
+
+  const applyTransform = (x: number, y: number, scale: number, rotate: number) => {
+    if (butterflyRef.current) {
+      butterflyRef.current.setAttribute(
+        'transform',
+        `translate(${x.toFixed(2)} ${y.toFixed(2)}) translate(300 340) rotate(${rotate.toFixed(2)}) scale(${scale.toFixed(3)}) translate(-300 -340)`
+      );
+    }
+  };
 
   const triggerFlight = useCallback(() => {
     if (!interactive) return;
-    setAnimTime(0.22 * 9.0);
+    animTimeRef.current = 0.22 * 9.0;
     isPlayingRef.current = true;
   }, [interactive]);
 
@@ -52,20 +117,35 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
       lastTimeRef.current = now;
 
       if (isPlayingRef.current) {
-        setAnimTime((prev) => {
-          const next = prev + dt;
-          const cycle = 9.0;
-          if (next >= cycle) {
-            if (autoLoop) {
-              return next % cycle;
-            } else {
-              isPlayingRef.current = false;
-              if (onFlightComplete) onFlightComplete();
-              return 0;
-            }
+        animTimeRef.current += dt;
+        const cycle = 9.0;
+        if (animTimeRef.current >= cycle) {
+          if (autoLoop) {
+            animTimeRef.current = animTimeRef.current % cycle;
+          } else {
+            isPlayingRef.current = false;
+            animTimeRef.current = 0;
+            if (onFlightComplete) onFlightComplete();
           }
-          return next;
-        });
+        }
+
+        const { x, y, scale, rotate, isFlapping, isLandingUnfold, windActive } = calculateTransform(animTimeRef.current);
+        applyTransform(x, y, scale, rotate);
+
+        const nextWingState: 'idle' | 'flapping' | 'landing' = isFlapping
+          ? 'flapping'
+          : isLandingUnfold
+          ? 'landing'
+          : 'idle';
+        if (nextWingState !== lastWingStateRef.current) {
+          lastWingStateRef.current = nextWingState;
+          setWingState(nextWingState);
+        }
+
+        if (windActive !== lastWindRef.current) {
+          lastWindRef.current = windActive;
+          setShowWind(windActive);
+        }
       }
 
       animFrameRef.current = requestAnimationFrame(loop);
@@ -79,51 +159,9 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
     };
   }, [animate, autoLoop, onFlightComplete]);
 
-  const tNorm = (animTime % 9.0) / 9.0;
-  let transform = { x: 0, y: 0, scale: 1, rotate: 0, isFlapping: false, isLandingUnfold: false, windActive: false };
-
-  if (tNorm < 0.22) {
-    transform = { x: 0, y: 0, scale: 1, rotate: 0, isFlapping: false, isLandingUnfold: false, windActive: false };
-  } else if (tNorm < 0.32) {
-    const p = (tNorm - 0.22) / 0.10;
-    transform = {
-      x: Math.sin(p * Math.PI) * 10,
-      y: -p * 24,
-      scale: 1 + p * 0.05,
-      rotate: p * 8,
-      isFlapping: true,
-      isLandingUnfold: false,
-      windActive: true,
-    };
-  } else if (tNorm < 0.72) {
-    const p = (tNorm - 0.32) / 0.40;
-    const angle = p * Math.PI * 2;
-    transform = {
-      x: Math.sin(angle) * 165 + Math.cos(angle * 2) * 35,
-      y: -135 - Math.sin(angle) * 75 + Math.sin(angle * 3) * 20,
-      scale: 0.84 + Math.sin(angle + Math.PI / 2) * 0.22,
-      rotate: Math.cos(angle) * 26,
-      isFlapping: true,
-      isLandingUnfold: false,
-      windActive: true,
-    };
-  } else if (tNorm < 0.88) {
-    const p = (tNorm - 0.72) / 0.16;
-    const ease = 1 - Math.pow(1 - p, 3);
-    transform = {
-      x: 65 * (1 - ease),
-      y: -120 * (1 - ease),
-      scale: 0.88 + ease * 0.12,
-      rotate: 16 * (1 - ease),
-      isFlapping: p < 0.45,
-      isLandingUnfold: p >= 0.45,
-      windActive: p < 0.55,
-    };
-  }
-
   return (
     <div
-      style={{ width: size, height: (size * 700) / 600 }}
+      style={{ width: size, height: (size * 700) / 600, overflow: 'visible' }}
       className={`relative inline-flex items-center justify-center shrink-0 select-none overflow-visible group/ezbutterfly ${
         interactive ? 'cursor-pointer' : ''
       } ${className}`}
@@ -134,6 +172,8 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
         viewBox="0 0 600 700"
         width={size}
         height={(size * 700) / 600}
+        overflow="visible"
+        style={{ overflow: 'visible' }}
         className="w-full h-full overflow-visible transition-transform duration-200 group-hover/ezbutterfly:scale-105"
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -302,11 +342,11 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
             </feMerge>
           </filter>
 
-          <filter id="ezCrestShadowAdmin" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="ezCrestShadowAdmin" x="-30%" y="-30%" width="160%" height="160%">
             <feDropShadow dx="0" dy="16" stdDeviation="20" floodColor="#020617" floodOpacity="0.65" />
           </filter>
 
-          <filter id="ezWingShadowAdmin" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="ezWingShadowAdmin" x="-60%" y="-60%" width="220%" height="220%">
             <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#020617" floodOpacity="0.4" />
           </filter>
         </defs>
@@ -316,27 +356,57 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
             0%, 100% { transform: scale(1); opacity: 0.95; }
             50% { transform: scale(1.25); opacity: 1; }
           }
+          @-webkit-keyframes ezStarPulseAdmin {
+            0%, 100% { -webkit-transform: scale(1); opacity: 0.95; }
+            50% { -webkit-transform: scale(1.25); opacity: 1; }
+          }
           @keyframes ezWingFlapLAdmin {
             0% { transform: rotate(0deg) scaleX(1); }
             50% { transform: rotate(18deg) scaleX(0.3); }
             100% { transform: rotate(0deg) scaleX(1); }
+          }
+          @-webkit-keyframes ezWingFlapLAdmin {
+            0% { -webkit-transform: rotate(0deg) scaleX(1); }
+            50% { -webkit-transform: rotate(18deg) scaleX(0.3); }
+            100% { -webkit-transform: rotate(0deg) scaleX(1); }
           }
           @keyframes ezWingFlapRAdmin {
             0% { transform: rotate(0deg) scaleX(1); }
             50% { transform: rotate(-18deg) scaleX(0.3); }
             100% { transform: rotate(0deg) scaleX(1); }
           }
+          @-webkit-keyframes ezWingFlapRAdmin {
+            0% { -webkit-transform: rotate(0deg) scaleX(1); }
+            50% { -webkit-transform: rotate(-18deg) scaleX(0.3); }
+            100% { -webkit-transform: rotate(0deg) scaleX(1); }
+          }
           @keyframes ezLandingUnfoldLAdmin {
             0% { transform: rotate(26deg) scaleX(0.35); }
             65% { transform: rotate(-3deg) scaleX(1.02); }
             100% { transform: rotate(0deg) scaleX(1); }
+          }
+          @-webkit-keyframes ezLandingUnfoldLAdmin {
+            0% { -webkit-transform: rotate(26deg) scaleX(0.35); }
+            65% { -webkit-transform: rotate(-3deg) scaleX(1.02); }
+            100% { -webkit-transform: rotate(0deg) scaleX(1); }
           }
           @keyframes ezLandingUnfoldRAdmin {
             0% { transform: rotate(-26deg) scaleX(0.35); }
             65% { transform: rotate(3deg) scaleX(1.02); }
             100% { transform: rotate(0deg) scaleX(1); }
           }
+          @-webkit-keyframes ezLandingUnfoldRAdmin {
+            0% { -webkit-transform: rotate(-26deg) scaleX(0.35); }
+            65% { -webkit-transform: rotate(3deg) scaleX(1.02); }
+            100% { -webkit-transform: rotate(0deg) scaleX(1); }
+          }
           @keyframes ezWindDashAdmin {
+            0% { stroke-dashoffset: 800; opacity: 0; }
+            20% { opacity: 0.95; }
+            80% { opacity: 0.95; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+          }
+          @-webkit-keyframes ezWindDashAdmin {
             0% { stroke-dashoffset: 800; opacity: 0; }
             20% { opacity: 0.95; }
             80% { opacity: 0.95; }
@@ -348,51 +418,97 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
             35% { transform: translateX(280px) skewX(-24deg); opacity: 0.85; }
             45%, 100% { transform: translateX(340px) skewX(-24deg); opacity: 0; }
           }
+          @-webkit-keyframes ezLustreShineAdmin {
+            0% { -webkit-transform: translateX(-320px) skewX(-24deg); opacity: 0; }
+            15% { opacity: 0.85; }
+            35% { -webkit-transform: translateX(280px) skewX(-24deg); opacity: 0.85; }
+            45%, 100% { -webkit-transform: translateX(340px) skewX(-24deg); opacity: 0; }
+          }
           @keyframes ezGlintTwinkleAdmin {
             0%, 100% { transform: scale(0.8) rotate(0deg); opacity: 0.65; }
             50% { transform: scale(1.35) rotate(45deg); opacity: 1; }
           }
+          @-webkit-keyframes ezGlintTwinkleAdmin {
+            0%, 100% { -webkit-transform: scale(0.8) rotate(0deg); opacity: 0.65; }
+            50% { -webkit-transform: scale(1.35) rotate(45deg); opacity: 1; }
+          }
           .ez-star-twinkle-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 300px 122px;
+            -webkit-transform-origin: 300px 122px;
             animation: ezStarPulseAdmin 3s ease-in-out infinite;
+            -webkit-animation: ezStarPulseAdmin 3s ease-in-out infinite;
           }
           .ez-flap-left-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 300px 340px;
+            -webkit-transform-origin: 300px 340px;
             animation: ezWingFlapLAdmin 0.15s ease-in-out infinite;
+            -webkit-animation: ezWingFlapLAdmin 0.15s ease-in-out infinite;
+            will-change: transform;
           }
           .ez-flap-right-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 300px 340px;
+            -webkit-transform-origin: 300px 340px;
             animation: ezWingFlapRAdmin 0.15s ease-in-out infinite;
+            -webkit-animation: ezWingFlapRAdmin 0.15s ease-in-out infinite;
+            will-change: transform;
           }
           .ez-unfold-left-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 300px 340px;
+            -webkit-transform-origin: 300px 340px;
             animation: ezLandingUnfoldLAdmin 0.9s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+            -webkit-animation: ezLandingUnfoldLAdmin 0.9s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+            will-change: transform;
           }
           .ez-unfold-right-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 300px 340px;
+            -webkit-transform-origin: 300px 340px;
             animation: ezLandingUnfoldRAdmin 0.9s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+            -webkit-animation: ezLandingUnfoldRAdmin 0.9s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+            will-change: transform;
           }
           .ez-wind-1-admin {
             stroke-dasharray: 180 600;
             animation: ezWindDashAdmin 1.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+            -webkit-animation: ezWindDashAdmin 1.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
           }
           .ez-wind-2-admin {
             stroke-dasharray: 240 700;
             animation: ezWindDashAdmin 2.0s 0.2s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+            -webkit-animation: ezWindDashAdmin 2.0s 0.2s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
           }
           .ez-lustre-sweep-admin {
             animation: ezLustreShineAdmin 4.2s ease-in-out infinite;
+            -webkit-animation: ezLustreShineAdmin 4.2s ease-in-out infinite;
           }
           .ez-glint-left-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 144px 202px;
+            -webkit-transform-origin: 144px 202px;
             animation: ezGlintTwinkleAdmin 2.8s ease-in-out infinite;
+            -webkit-animation: ezGlintTwinkleAdmin 2.8s ease-in-out infinite;
           }
           .ez-glint-right-admin {
+            transform-box: view-box;
+            -webkit-transform-box: view-box;
             transform-origin: 456px 202px;
+            -webkit-transform-origin: 456px 202px;
             animation: ezGlintTwinkleAdmin 2.8s 1.4s ease-in-out infinite;
+            -webkit-animation: ezGlintTwinkleAdmin 2.8s 1.4s ease-in-out infinite;
           }
         `}</style>
 
+        {/* Shield and North Star Base (Crest Shadow applied only to shield group) */}
         <g filter="url(#ezCrestShadowAdmin)">
           {/* Shield Outline and Bevel */}
           <path
@@ -447,110 +563,112 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
           </g>
           <circle cx="230" cy="125" r="3.2" fill="#fef08a" opacity="0.85" />
           <circle cx="370" cy="125" r="3.2" fill="#fef08a" opacity="0.85" />
+        </g>
 
-          {/* Wind streams */}
-          {transform.windActive && (
-            <g>
+        {/* Wind streams (Active when flying, outside crest shadow filter) */}
+        {showWind && (
+          <g>
+            <path
+              className="ez-wind-1-admin"
+              d="M 80 540 C 130 460 210 390 300 330 C 380 270 450 210 520 150"
+              fill="none"
+              stroke="url(#ezWindGradAdmin)"
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+            <path
+              className="ez-wind-2-admin"
+              d="M 120 280 C 180 170 320 150 420 210 C 490 270 470 420 380 470"
+              fill="none"
+              stroke="url(#ezWindGradAdmin)"
+              strokeWidth="4.5"
+              strokeLinecap="round"
+            />
+          </g>
+        )}
+
+        {/* Centerpiece Butterfly Book */}
+        {/* Hardware-accelerated native SVG transform in viewBox coordinates with zero WebKit CSS pixel drift */}
+        <g
+          ref={butterflyRef}
+          transform="translate(0 0) translate(300 340) rotate(0) scale(1) translate(-300 -340)"
+          style={{
+            willChange: 'transform',
+          }}
+        >
+          <g filter="url(#ezWingShadowAdmin)">
+            <ellipse cx="300" cy="335" rx="145" ry="115" fill="#38bdf8" opacity="0.12" />
+
+            {/* LEFT WING / BOOK PAGE */}
+            <g
+              className={
+                wingState === 'flapping'
+                  ? 'ez-flap-left-admin'
+                  : wingState === 'landing'
+                  ? 'ez-unfold-left-admin'
+                  : ''
+              }
+            >
+              {/* Main Colorful Wing Base */}
               <path
-                className="ez-wind-1-admin"
-                d="M 80 540 C 130 460 210 390 300 330 C 380 270 450 210 520 150"
-                fill="none"
-                stroke="url(#ezWindGradAdmin)"
-                strokeWidth="5"
-                strokeLinecap="round"
+                d="M 296 242 C 275 208 195 168 142 200 C 118 215 110 248 120 282 C 130 315 158 332 176 354 C 152 388 140 425 168 456 C 200 488 255 470 296 445 Z"
+                fill="url(#ezWingPageGradLeftAdmin)"
+                stroke="url(#ezWingGoldTrimAdmin)"
+                strokeWidth="8"
+                strokeLinejoin="round"
               />
+
+              {/* Upper Lobe Jewel Inlay */}
               <path
-                className="ez-wind-2-admin"
-                d="M 120 280 C 180 170 320 150 420 210 C 490 270 470 420 380 470"
-                fill="none"
-                stroke="url(#ezWindGradAdmin)"
-                strokeWidth="4.5"
-                strokeLinecap="round"
+                d="M 284 254 C 255 228 198 200 155 220 C 136 230 130 252 138 275 C 148 300 172 316 195 330 C 235 305 268 280 284 254 Z"
+                fill="url(#ezWingUpperJewelLAdmin)"
               />
-            </g>
-          )}
 
-          {/* Centerpiece Butterfly Book */}
-          <g
-            style={{
-              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale}) rotate(${transform.rotate}deg)`,
-              transformOrigin: '300px 340px',
-              transition: 'transform 0.05s linear',
-            }}
-          >
-            <g filter="url(#ezWingShadowAdmin)">
-              <ellipse cx="300" cy="335" rx="145" ry="115" fill="#38bdf8" opacity="0.12" />
+              {/* Lower Lobe Jewel Inlay */}
+              <path
+                d="M 282 390 C 248 405 210 415 185 432 C 168 444 180 460 205 462 C 238 464 268 442 288 418 Z"
+                fill="url(#ezWingLowerJewelLAdmin)"
+              />
 
-              {/* LEFT WING / BOOK PAGE */}
-              <g
-                className={
-                  transform.isFlapping
-                    ? 'ez-flap-left-admin'
-                    : transform.isLandingUnfold
-                    ? 'ez-unfold-left-admin'
-                    : ''
-                }
-              >
-                {/* Main Colorful Wing Base */}
-                <path
-                  d="M 296 242 C 275 208 195 168 142 200 C 118 215 110 248 120 282 C 130 315 158 332 176 354 C 152 388 140 425 168 456 C 200 488 255 470 296 445 Z"
-                  fill="url(#ezWingPageGradLeftAdmin)"
-                  stroke="url(#ezWingGoldTrimAdmin)"
-                  strokeWidth="8"
-                  strokeLinejoin="round"
-                />
+              {/* Inner Page Shading Contour */}
+              <path
+                d="M 294 252 C 274 222 202 184 152 212 C 132 225 125 252 133 280 C 142 310 168 326 185 348 C 162 382 152 415 178 442 C 205 468 254 454 294 432"
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                opacity="0.75"
+              />
 
-                {/* Upper Lobe Jewel Inlay */}
-                <path
-                  d="M 284 254 C 255 228 198 200 155 220 C 136 230 130 252 138 275 C 148 300 172 316 195 330 C 235 305 268 280 284 254 Z"
-                  fill="url(#ezWingUpperJewelLAdmin)"
-                />
+              {/* Book Page Crease Lines / Luminous Veins */}
+              <path d="M 294 276 C 255 248 202 224 158 238" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="3.2" strokeLinecap="round" opacity="0.9" />
+              <path d="M 294 310 C 250 292 198 278 152 296" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.8" strokeLinecap="round" opacity="0.85" />
+              <path d="M 294 345 C 255 338 212 336 182 352" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
+              <path d="M 294 380 C 255 388 216 394 182 418" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.8" strokeLinecap="round" opacity="0.85" />
+              <path d="M 294 415 C 265 426 232 440 205 452" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="3" strokeLinecap="round" opacity="0.9" />
 
-                {/* Lower Lobe Jewel Inlay */}
-                <path
-                  d="M 282 390 C 248 405 210 415 185 432 C 168 444 180 460 205 462 C 238 464 268 442 288 418 Z"
-                  fill="url(#ezWingLowerJewelLAdmin)"
-                />
+              {/* Specular Glare / Lustre Gloss Cap (Upper Ridge Reflection) */}
+              <path
+                d="M 296 242 C 275 208 195 168 142 200 C 132 206 130 216 142 216 C 185 192 260 220 294 250 Z"
+                fill="url(#ezWingGlareArcLAdmin)"
+              />
 
-                {/* Inner Page Shading Contour */}
-                <path
-                  d="M 294 252 C 274 222 202 184 152 212 C 132 225 125 252 133 280 C 142 310 168 326 185 348 C 162 382 152 415 178 442 C 205 468 254 454 294 432"
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeWidth="2.5"
-                  opacity="0.75"
-                />
-
-                {/* Book Page Crease Lines / Luminous Veins */}
-                <path d="M 294 276 C 255 248 202 224 158 238" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="3.2" strokeLinecap="round" opacity="0.9" />
-                <path d="M 294 310 C 250 292 198 278 152 296" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.8" strokeLinecap="round" opacity="0.85" />
-                <path d="M 294 345 C 255 338 212 336 182 352" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
-                <path d="M 294 380 C 255 388 216 394 182 418" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="2.8" strokeLinecap="round" opacity="0.85" />
-                <path d="M 294 415 C 265 426 232 440 205 452" fill="none" stroke="url(#ezVeinGoldLAdmin)" strokeWidth="3" strokeLinecap="round" opacity="0.9" />
-
-                {/* Specular Glare / Lustre Gloss Cap (Upper Ridge Reflection) */}
-                <path
-                  d="M 296 242 C 275 208 195 168 142 200 C 132 206 130 216 142 216 C 185 192 260 220 294 250 Z"
-                  fill="url(#ezWingGlareArcLAdmin)"
-                />
-
-                {/* Diamond Glint Star Sparkle */}
-                <g className="ez-glint-left-admin" filter="url(#ezStarGlowAdmin)">
-                  <path d="M 144 194 Q 144 202 152 202 Q 144 202 144 210 Q 144 202 136 202 Q 144 202 144 194 Z" fill="#ffffff" />
-                  <circle cx="144" cy="202" r="2" fill="#fef08a" />
-                </g>
+              {/* Diamond Glint Star Sparkle */}
+              <g className="ez-glint-left-admin" filter="url(#ezStarGlowAdmin)">
+                <path d="M 144 194 Q 144 202 152 202 Q 144 202 144 210 Q 144 202 136 202 Q 144 202 144 194 Z" fill="#ffffff" />
+                <circle cx="144" cy="202" r="2" fill="#fef08a" />
               </g>
+            </g>
 
-              {/* RIGHT WING / BOOK PAGE */}
-              <g
-                className={
-                  transform.isFlapping
-                    ? 'ez-flap-right-admin'
-                    : transform.isLandingUnfold
-                    ? 'ez-unfold-right-admin'
-                    : ''
-                }
-              >
+            {/* RIGHT WING / BOOK PAGE */}
+            <g
+              className={
+                wingState === 'flapping'
+                  ? 'ez-flap-right-admin'
+                  : wingState === 'landing'
+                  ? 'ez-unfold-right-admin'
+                  : ''
+              }
+            >
                 {/* Main Colorful Wing Base */}
                 <path
                   d="M 304 242 C 325 208 405 168 458 200 C 482 215 490 248 480 282 C 470 315 442 332 424 354 C 448 388 460 425 432 456 C 400 488 345 470 304 445 Z"
@@ -720,7 +838,6 @@ export const ExamizoButterflyIcon: React.FC<ExamizoButterflyIconProps> = ({
               • ESTD. 2026 •
             </text>
           </g>
-        </g>
       </svg>
     </div>
   );
