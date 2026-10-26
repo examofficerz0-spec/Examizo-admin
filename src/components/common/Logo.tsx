@@ -21,21 +21,23 @@ export const Logo: React.FC<LogoProps> = ({
   animate = true,
   variant = 'butterfly',
 }) => {
+  const scaledSize = Math.round(size * 1.10);
+
   const calculatedTextSize =
     textSize ||
-    (size >= 46
+    (scaledSize >= 50
       ? 'text-2xl'
-      : size >= 38
+      : scaledSize >= 40
       ? 'text-xl'
       : 'text-lg');
 
   return (
-    <div className={`flex items-center gap-3 group examizo-container select-none ${className}`}>
+    <div className={`flex items-center gap-3.5 group examizo-container select-none ${className}`}>
       <div className="relative shrink-0 transition-transform duration-300 group-hover:scale-105">
         {variant === 'butterfly' ? (
-          <ExamizoButterflyIcon size={size} animate={animate} />
+          <ExamizoButterflyIcon size={scaledSize} animate={animate} />
         ) : (
-          <ExamizoIcon size={size} animate={animate} />
+          <ExamizoIcon size={scaledSize} animate={animate} />
         )}
       </div>
 
